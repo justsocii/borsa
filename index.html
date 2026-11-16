@@ -112,6 +112,24 @@
   .gecmis { padding: 10px 16px 14px; border-top: 1px solid var(--line); }
   .gecmis .g { font-size: 13px; color: var(--ink2); padding: 4px 0; }
   .gecmis .g b { color: var(--ink); }
+  .klasor { display: flex; align-items: center; gap: 12px; padding: 13px 16px; border-bottom: 1px solid var(--line); cursor: pointer; width: 100%; background: none; border-left: 0; border-right: 0; border-top: 0; font: inherit; color: inherit; text-align: left; }
+  .klasor:last-child { border-bottom: 0; }
+  .klasor svg { width: 26px; height: 26px; color: var(--accent); flex: none; }
+  .geri { border: 0; background: none; color: var(--accent); font: inherit; font-weight: 650; font-size: 15px; padding: 2px 0 10px; cursor: pointer; }
+  .dosya { display: flex; gap: 12px; align-items: flex-start; padding: 12px 16px; border-bottom: 1px solid var(--line); cursor: pointer; }
+  .dosya:last-child { border-bottom: 0; }
+  .dosya .kutu { width: 22px; height: 22px; border-radius: 6px; border: 2px solid var(--line); flex: none; margin-top: 2px; display: grid; place-items: center; }
+  .dosya.sec .kutu { background: var(--accent); border-color: var(--accent); }
+  .dosya.sec .kutu::after { content: ""; width: 10px; height: 6px; border: 2px solid var(--card); border-top: 0; border-right: 0; transform: rotate(-45deg) translate(1px, -1px); }
+  .dosya .pdf { width: 22px; height: 22px; flex: none; color: var(--down); margin-top: 2px; }
+  details.grp > summary { list-style: none; cursor: pointer; padding: 12px 16px; font-weight: 650; font-size: 14px; color: var(--ink2); display: flex; align-items: center; gap: 8px; }
+  details.grp > summary::-webkit-details-marker { display: none; }
+  details.grp > summary::after { content: "›"; margin-left: auto; color: var(--muted); transition: transform .15s; }
+  details.grp[open] > summary::after { transform: rotate(90deg); }
+  details.grp[open] > summary { border-bottom: 1px solid var(--line); }
+  .secbar { position: fixed; left: 0; right: 0; bottom: calc(var(--tab-h) + env(safe-area-inset-bottom)); z-index: 7; background: var(--card); border-top: 1px solid var(--line); padding: 10px 16px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .secbar .grow { font-size: 13px; color: var(--muted); }
+  .btn.sil { background: var(--down); color: #fff; }
   /* alt sayfa (sheet) */
   .sheet-bg { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 20; display: none; }
   .sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 21; background: var(--bg); border-radius: 18px 18px 0 0; max-height: 88vh; overflow: auto; padding: 8px 16px calc(env(safe-area-inset-bottom) + 20px); display: none; max-width: 720px; margin: 0 auto; }
@@ -201,7 +219,7 @@
   };
   var cfg = LS.get('cfg', null);
   var veri = null, takip = { hisseler: [] }, takipSha = null, portfoy = { islemler: [] }, portfoySha = null;
-  var aktif = LS.get('sekme', 'kap'), raporFiltre = 'hepsi';
+  var aktif = LS.get('sekme', 'kap');
   var $ = function (id) { return document.getElementById(id); };
   var TL = new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   var TL0 = new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 0 });
@@ -323,7 +341,7 @@
       var h = hisse(k);
       (h.kap || []).forEach(function (x) { if (h.kapSonYeni && x.bulundu >= h.kapSonYeni && yeniMi('kap', k, x.bulundu)) nk++; });
       if (ortYeniMi(k, h)) nk++;
-      (h.raporlar || []).concat(h.hedefler || []).forEach(function (x) { if (yeniMi('rapor', k, x.bulundu) && h.raporSonYeni && x.bulundu >= h.raporSonYeni) nr++; });
+      nr += yeniRaporSayisi(k);
     });
     $('d-kap').hidden = !nk; $('d-kap').textContent = nk;
     $('d-rapor').hidden = !nr; $('d-rapor').textContent = nr;
@@ -516,54 +534,193 @@
   }
 
   // ---- Raporlar ----
+  // Klasörler = depodaki raporlar/KOD/ klasörleri. Dosya listesi depodan okunur (silinenler hemen kaybolur).
+  var agac = null, agacYukleniyor = false, silinenler = { dosyalar: [], raporlar: [] };
+  var raporKlasor = null, secimModu = false, secili = {};
+  var GENEL_KELIME = ['turk', 'turkiye', 'sanayi', 'ticaret', 'holding', 'yatirim', 'anonim', 'sirketi', 'enerji', 'gayrimenkul', 'ortakligi', 'insaat', 'elektrik', 'petrol', 'gida', 'tekstil', 'cimento', 'bankasi', 'sigorta', 'emeklilik', 'hayat', 'grup', 'group', 'teknoloji', 'uretim', 'dagitim', 'saglik', 'hizmetleri', 'yatirimlari'];
+  function sade(x) {
+    return String(x || '').toLocaleLowerCase('tr').replace(/ğ/g, 'g').replace(/ü/g, 'u').replace(/ş/g, 's').replace(/ı/g, 'i')
+      .replace(/ö/g, 'o').replace(/ç/g, 'c').replace(/â/g, 'a').replace(/î/g, 'i').replace(/[^a-z0-9]+/g, ' ').trim();
+  }
+  function ilgiliMi(kod, unvan, metin) {
+    var t = sade(metin), bit = t.replace(/ /g, ''), k = sade(kod).replace(/ /g, '');
+    if (k && bit.indexOf(k) >= 0) return true;
+    if (k.length >= 5 && new RegExp('(^| )' + k.slice(0, 3) + '( |$)').test(t)) return true;
+    var ilk = sade(unvan).split(' ').filter(function (w) { return w.length >= 4 && GENEL_KELIME.indexOf(w) < 0; })[0];
+    return !!(ilk && ilk.length >= 5 && bit.indexOf(ilk) >= 0);
+  }
+  function boyut(b) { return b >= 1048576 ? (b / 1048576).toLocaleString('tr-TR', { maximumFractionDigits: 1 }) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB'; }
+  function agacYukle(zorla) {
+    if (agacYukleniyor || (agac && !zorla)) return Promise.resolve();
+    agacYukleniyor = true;
+    return Promise.all([
+      api(depo() + '/git/trees/main?recursive=1'),
+      dosyaOku('silinen.json')
+    ]).then(function (r) {
+      agac = (r[0].tree || []).filter(function (x) { return x.type === 'blob' && /^raporlar\/[^/]+\/[^/]+\.pdf$/i.test(x.path); })
+        .map(function (x) { return { yol: x.path, kod: x.path.split('/')[1], ad: x.path.split('/')[2], boyut: x.size || 0 }; });
+      silinenler = r[1].veri || { dosyalar: [], raporlar: [] };
+    }).catch(function (e) { toast('Dosya listesi alınamadı: ' + e.message, 5000); })
+      .then(function () { agacYukleniyor = false; if (aktif === 'rapor') cizRapor(); });
+  }
+  // Dosyanın bilgisi: program kaydettiyse oradan, yoksa dosya adından
+  function dosyaMeta(d) {
+    var m = (veri.dosyaBilgi || {})[d.yol];
+    var p = d.ad.match(/^(\d{4}-\d\d-\d\d|tarihsiz)_(\d+)_(.+)\.pdf$/i) || [];
+    var h = hisse(d.kod), baslik = m && m.baslik;
+    if (!baslik) { (h.raporlar || []).forEach(function (r) { (r.dosyalar || []).forEach(function (f) { if (f.yol === d.yol) { baslik = r.baslik; m = m || r; } }); }); }
+    var slug = (p[3] || d.ad).replace(/-\d+$/, '').replace(/[-_]+/g, ' ');
+    var o = { tarih: (m && m.tarih) || (p[1] !== 'tarihsiz' ? p[1] : ''), id: (m && m.id) || p[2], kurum: (m && m.kurum) || '', baslik: baslik || slug, link: m && m.link };
+    o.ilgili = m && typeof m.ilgili === 'boolean' ? m.ilgili : ilgiliMi(d.kod, h.unvan || h.ad || '', (baslik || '') + ' ' + slug);
+    return o;
+  }
+  function klasorDosyalari(kod) {
+    return (agac || []).filter(function (d) { return d.kod === kod; }).map(function (d) { d.meta = dosyaMeta(d); return d; })
+      .sort(function (a, b) { return String(b.meta.tarih).localeCompare(String(a.meta.tarih)) || Number(b.meta.id) - Number(a.meta.id); });
+  }
+  function yeniRaporSayisi(k) {
+    var h = hisse(k), n = 0;
+    if (!h.raporSonYeni) return 0;
+    (h.raporlar || []).concat(h.hedefler || []).forEach(function (x) { if (x.ilgili !== false && x.bulundu >= h.raporSonYeni && yeniMi('rapor', k, x.bulundu)) n++; });
+    return n;
+  }
+  var KLASOR_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2.5h8.5A1.5 1.5 0 0 1 21 9v9.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z"/></svg>';
+  var PDF_SVG = '<svg class="pdf" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5"/></svg>';
+
   function cizRapor() {
     var kodlar = takipKodlari(), html = '';
-    if (!kodlar.length) { $('s-rapor').innerHTML = bosTakip(); return; }
-    if (raporFiltre !== 'hepsi' && kodlar.indexOf(raporFiltre) < 0) raporFiltre = 'hepsi';
-    html += '<div class="chips"><button class="chip' + (raporFiltre === 'hepsi' ? ' on' : '') + '" data-act="rfiltre" data-k="hepsi">Tümü</button>';
-    kodlar.forEach(function (k) { html += '<button class="chip' + (raporFiltre === k ? ' on' : '') + '" data-act="rfiltre" data-k="' + esc(k) + '">' + esc(k) + '</button>'; });
-    html += '</div>';
-    var secili = raporFiltre === 'hepsi' ? kodlar : [raporFiltre];
+    if (!agac) { agacYukle(); }
+    var bar = document.getElementById('secbar'); if (bar) bar.remove();
 
-    if (raporFiltre !== 'hepsi') {
-      var h = hisse(raporFiltre), o = h.raporOzet || {};
-      html += '<div class="card pad"><div class="row"><div class="grow"><div class="kod">' + esc(raporFiltre) + '</div><div class="sub">' + esc(h.unvan || h.ad || '') + '</div></div>'
-        + (h.hfLink ? '<a class="btn small soft" href="' + esc(h.hfLink) + '" target="_blank" rel="noopener">Sitede aç</a>' : '') + '</div>'
-        + '<div class="kv num"><div><div class="k">Ortalama hedef</div><div class="v">' + esc(o.ortalama || '—') + '</div></div>'
-        + '<div><div class="k">Getiri potansiyeli</div><div class="v">' + esc(o.potansiyel || '—') + '</div></div>'
-        + '<div><div class="k">En yüksek / düşük</div><div class="v">' + esc((o.enYuksek || '—') + ' / ' + (o.enDusuk || '—')) + '</div></div>'
-        + '<div><div class="k">Kurum sayısı</div><div class="v">' + esc(o.kurumSayisi || '—') + '</div></div></div></div>';
-      if (h.hatalar && h.hatalar.rapor) html += '<div class="card"><div class="errbox">' + esc(h.hatalar.rapor) + '</div></div>';
-      if ((h.hedefler || []).length) {
-        html += '<div class="sec-title"><span>Hedef fiyatlar</span></div><div class="card">';
-        h.hedefler.forEach(function (x) {
-          html += '<a class="item' + (h.raporSonYeni && x.bulundu >= h.raporSonYeni && yeniMi('rapor', raporFiltre, x.bulundu) ? ' isnew' : '') + '" href="' + esc(x.link) + '" target="_blank" rel="noopener"><div class="t">' + gun(x.tarih) + ' · ' + esc(x.kurum) + '</div>'
-            + '<div class="h num">Hedef ' + esc(x.hedef) + ' · ' + esc(x.tavsiye) + ' <span class="sub">(' + esc(x.potansiyel) + ')</span></div>' + (x.aciklama ? '<div class="d">' + esc(x.aciklama) + '</div>' : '') + '</a>';
+    if (!raporKlasor) {
+      // Klasör listesi
+      var klasorler = kodlar.slice();
+      (agac || []).forEach(function (d) { if (klasorler.indexOf(d.kod) < 0) klasorler.push(d.kod); });
+      if (!klasorler.length) { $('s-rapor').innerHTML = bosTakip(); return; }
+      // Son 7 günün raporları: tüm şirketler bir arada
+      if (agac) {
+        var sinir = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Istanbul' }).format(new Date(Date.now() - 7 * 86400000));
+        var sonHafta = [];
+        klasorler.forEach(function (k) { klasorDosyalari(k).forEach(function (d) { if (d.meta.ilgili && d.meta.tarih && d.meta.tarih >= sinir) sonHafta.push(d); }); });
+        sonHafta.sort(function (a, b) { return String(b.meta.tarih).localeCompare(String(a.meta.tarih)) || Number(b.meta.id) - Number(a.meta.id); });
+        html += '<div class="sec-title" style="margin-top:4px"><span>Son 7 gün</span></div><div class="card">';
+        if (!sonHafta.length) html += '<div class="empty" style="padding:22px 16px">Son bir haftada yeni rapor yok.</div>';
+        sonHafta.slice(0, 60).forEach(function (d) {
+          var m = d.meta;
+          html += '<div class="dosya" data-act="dosya" data-yol="' + esc(d.yol) + '">' + PDF_SVG
+            + '<div class="grow"><div class="t sub"><span class="ktag">' + esc(d.kod) + '</span>' + gun(m.tarih) + (m.kurum ? ' · ' + esc(m.kurum) : '') + '</div>'
+            + '<div class="h" style="font-weight:600;font-size:15px;margin-top:2px">' + esc(m.baslik) + '</div></div></div>';
         });
-        html += '</div>';
+        html += '</div><div class="sec-title"><span>Şirketler</span></div>';
       }
-      html += '<div class="sec-title"><span>Rapor dosyaları</span></div>';
-    }
-
-    var tum = [];
-    secili.forEach(function (k) { (hisse(k).raporlar || []).forEach(function (r) { tum.push({ k: k, r: r, h: hisse(k) }); }); });
-    tum.sort(function (a, b) { return String(b.r.tarih || '').localeCompare(String(a.r.tarih || '')) || Number(b.r.id) - Number(a.r.id); });
-    if (!tum.length) html += '<div class="card"><div class="empty">' + (veri.sonKontrol && veri.sonKontrol.rapor ? 'Henüz rapor yok.' : 'İlk kontrol bekleniyor. Yenile düğmesine basabilirsin.') + '</div></div>';
-    else {
+      var toplamB = 0, toplamN = 0;
       html += '<div class="card">';
-      tum.slice(0, 120).forEach(function (o) {
-        var r = o.r, y = o.h.raporSonYeni && r.bulundu >= o.h.raporSonYeni && yeniMi('rapor', o.k, r.bulundu);
-        html += '<div class="item' + (y ? ' isnew' : '') + '"><div class="t">' + (raporFiltre === 'hepsi' ? '<b>' + esc(o.k) + '</b> · ' : '') + gun(r.tarih) + (r.kurum ? ' · ' + esc(r.kurum) : '') + '</div>'
-          + '<div class="h">' + esc(r.baslik) + '</div><div class="links">';
-        (r.dosyalar || []).forEach(function (d, i) {
-          html += '<button class="btn small" data-act="pdf" data-yol="' + esc(d.yol) + '">PDF' + (r.dosyalar.length > 1 ? ' ' + (i + 1) : '') + '</button>';
-        });
-        html += '<a class="btn small soft" href="' + esc(r.link) + '" target="_blank" rel="noopener">Kaynak</a></div></div>';
+      klasorler.forEach(function (k) {
+        var ds = (agac || []).filter(function (d) { return d.kod === k; }), b = 0;
+        ds.forEach(function (d) { b += d.boyut; }); toplamB += b; toplamN += ds.length;
+        var h = hisse(k), yn = yeniRaporSayisi(k);
+        html += '<button class="klasor" data-act="klasor" data-k="' + esc(k) + '">' + KLASOR_SVG
+          + '<div class="grow"><div class="kod">' + esc(k) + (kodlar.indexOf(k) < 0 ? ' <span class="pill same" style="font-size:11px">takipte değil</span>' : '') + '</div>'
+          + '<div class="sub">' + (agac ? ds.length + ' dosya · ' + boyut(b) : 'yükleniyor…') + (h.unvan || h.ad ? ' · ' + esc(h.unvan || h.ad) : '') + '</div></div>'
+          + (yn ? '<span class="pill new">' + yn + ' yeni</span>' : '') + (h.hatalar && h.hatalar.rapor ? '<span class="pill err">Hata</span>' : '') + '<span class="chev">›</span></button>';
       });
       html += '</div>';
+      if (agac) html += '<p class="hint" style="text-align:center">Toplam ' + toplamN + ' dosya · ' + boyut(toplamB) + '</p>';
+      $('s-rapor').innerHTML = html;
+      return;
+    }
+
+    // Klasör içi
+    var k = raporKlasor, h = hisse(k), o = h.raporOzet || {};
+    html += '<button class="geri" data-act="klasorgeri">‹ Klasörler</button>';
+    html += '<div class="card pad"><div class="row"><div class="grow"><div class="kod">' + esc(k) + '</div><div class="sub">' + esc(h.unvan || h.ad || '') + '</div></div>'
+      + (h.hfLink ? '<a class="btn small soft" href="' + esc(h.hfLink) + '" target="_blank" rel="noopener">Sitede aç</a>' : '') + '</div>'
+      + '<div class="kv num"><div><div class="k">Ortalama hedef</div><div class="v">' + esc(o.ortalama || '—') + '</div></div>'
+      + '<div><div class="k">Getiri potansiyeli</div><div class="v">' + esc(o.potansiyel || '—') + '</div></div>'
+      + '<div><div class="k">En yüksek / düşük</div><div class="v">' + esc((o.enYuksek || '—') + ' / ' + (o.enDusuk || '—')) + '</div></div>'
+      + '<div><div class="k">Kurum sayısı</div><div class="v">' + esc(o.kurumSayisi || '—') + '</div></div></div></div>';
+    if (h.hatalar && h.hatalar.rapor) html += '<div class="card"><div class="errbox">' + esc(h.hatalar.rapor) + '</div></div>';
+    if ((h.hedefler || []).length) {
+      html += '<div class="card"><details class="grp"><summary>Hedef fiyatlar (' + h.hedefler.length + ')</summary>';
+      h.hedefler.forEach(function (x) {
+        html += '<a class="item' + (h.raporSonYeni && x.bulundu >= h.raporSonYeni && yeniMi('rapor', k, x.bulundu) ? ' isnew' : '') + '" href="' + esc(x.link) + '" target="_blank" rel="noopener"><div class="t">' + gun(x.tarih) + ' · ' + esc(x.kurum) + '</div>'
+          + '<div class="h num">Hedef ' + esc(x.hedef) + ' · ' + esc(x.tavsiye) + ' <span class="sub">(' + esc(x.potansiyel) + ')</span></div>' + (x.aciklama ? '<div class="d">' + esc(x.aciklama) + '</div>' : '') + '</a>';
+      });
+      html += '</details></div>';
+    }
+
+    var ds = agac ? klasorDosyalari(k) : [], ilgili = ds.filter(function (d) { return d.meta.ilgili; }), genel = ds.filter(function (d) { return !d.meta.ilgili; });
+    var b = 0; ds.forEach(function (d) { b += d.boyut; });
+    html += '<div class="sec-title"><span>Dosyalar' + (agac ? ' · ' + ds.length + ' · ' + boyut(b) : '') + '</span>'
+      + (ds.length ? '<button class="btn small' + (secimModu ? '' : ' soft') + '" data-act="secmod">' + (secimModu ? 'Bitti' : 'Seç') + '</button>' : '') + '</div>';
+    function satir(d) {
+      var m = d.meta, sec = !!secili[d.yol];
+      return '<div class="dosya' + (sec ? ' sec' : '') + '" data-act="dosya" data-yol="' + esc(d.yol) + '">' + (secimModu ? '<span class="kutu"></span>' : PDF_SVG)
+        + '<div class="grow"><div class="t sub">' + (m.tarih ? gun(m.tarih) : 'tarih yok') + (m.kurum ? ' · ' + esc(m.kurum) : '') + ' · ' + boyut(d.boyut) + '</div>'
+        + '<div class="h" style="font-weight:600;font-size:15px;margin-top:2px">' + esc(m.baslik) + '</div></div></div>';
+    }
+    if (!agac) html += '<div class="card"><div class="empty">Dosyalar yükleniyor…</div></div>';
+    else if (!ds.length) html += '<div class="card"><div class="empty">Bu klasörde henüz dosya yok.</div></div>';
+    else {
+      html += '<div class="card">' + (ilgili.length ? ilgili.map(satir).join('') : '<div class="empty">Bu hisseye ait rapor dosyası yok.</div>') + '</div>';
+      if (genel.length) {
+        var gb = 0; genel.forEach(function (d) { gb += d.boyut; });
+        html += '<div class="card"><details class="grp"' + (secimModu ? ' open' : '') + '><summary>Genel / sektör raporları (' + genel.length + ' · ' + boyut(gb) + ')</summary>' + genel.map(satir).join('') + '</details></div>';
+      }
+    }
+    // Sitede olup depoya indirilmemiş raporlar
+    var depodaki = {}; ds.forEach(function (d) { depodaki[d.yol] = 1; });
+    var silinenId = (silinenler.raporlar || []).map(String);
+    var indirilmemis = (h.raporlar || []).filter(function (r) {
+      return silinenId.indexOf(String(r.id)) < 0 && !(r.dosyalar || []).some(function (f) { return depodaki[f.yol]; });
+    });
+    if (indirilmemis.length) {
+      html += '<div class="card"><details class="grp"><summary>Sitede olup indirilmeyenler (' + indirilmemis.length + ')</summary>';
+      indirilmemis.forEach(function (r) {
+        html += '<a class="item" href="' + esc(r.link) + '" target="_blank" rel="noopener"><div class="t">' + gun(r.tarih) + (r.kurum ? ' · ' + esc(r.kurum) : '') + (r.ilgili === false ? ' · genel' : '') + '</div><div class="h">' + esc(r.baslik) + '</div></a>';
+      });
+      html += '</details></div>';
     }
     $('s-rapor').innerHTML = html;
-    if (aktif === 'rapor') secili.forEach(function (k) { gorulduYap('rapor', k); });
+    if (aktif === 'rapor') gorulduYap('rapor', k);
+
+    if (secimModu && aktif === 'rapor') {
+      var n = 0, sb = 0; ds.forEach(function (d) { if (secili[d.yol]) { n++; sb += d.boyut; } });
+      var el = document.createElement('div'); el.className = 'secbar'; el.id = 'secbar';
+      el.innerHTML = '<span class="grow">' + (n ? n + ' dosya · ' + boyut(sb) : 'Silmek için dosya seç') + '</span>'
+        + '<button class="btn small soft" data-act="sectum">Tümü</button>'
+        + (genel.length ? '<button class="btn small soft" data-act="secgenel">Genel olanlar</button>' : '')
+        + '<button class="btn small sil" data-act="silsecili"' + (n ? '' : ' disabled') + '>Sil</button>';
+      document.body.appendChild(el);
+      $('s-rapor').style.paddingBottom = '70px';
+    } else $('s-rapor').style.paddingBottom = '';
+  }
+
+  // Seçilen dosyaları tek bir değişiklikle depodan siler; silinenler bir daha indirilmez
+  function dosyalariSil(yollar, deneme) {
+    var idler = yollar.map(function (y) { var m = y.match(/\/(?:\d{4}-\d\d-\d\d|tarihsiz)_(\d+)_/); return m ? m[1] : null; }).filter(Boolean);
+    var bas;
+    return api(depo() + '/git/ref/heads/main').then(function (ref) {
+      bas = ref.object.sha;
+      return Promise.all([api(depo() + '/git/commits/' + bas), dosyaOku('silinen.json')]);
+    }).then(function (r) {
+      var sv = r[1].veri || { dosyalar: [], raporlar: [] };
+      sv.dosyalar = sv.dosyalar || [];
+      sv.dosyalar = sv.dosyalar.concat(yollar.filter(function (y) { return sv.dosyalar.indexOf(y) < 0; }));
+      sv.raporlar = (sv.raporlar || []).map(String);
+      idler.forEach(function (id) { if (sv.raporlar.indexOf(id) < 0) sv.raporlar.push(id); });
+      var tree = yollar.map(function (y) { return { path: y, mode: '100644', type: 'blob', sha: null }; });
+      tree.push({ path: 'silinen.json', mode: '100644', type: 'blob', content: JSON.stringify(sv, null, 1) + '\n' });
+      silinenler = sv;
+      return api(depo() + '/git/trees', { method: 'POST', body: { base_tree: r[0].tree.sha, tree: tree } });
+    }).then(function (t) {
+      return api(depo() + '/git/commits', { method: 'POST', body: { message: yollar.length + ' rapor dosyası silindi', tree: t.sha, parents: [bas] } });
+    }).then(function (c) {
+      return api(depo() + '/git/refs/heads/main', { method: 'PATCH', body: { sha: c.sha } });
+    }).catch(function (e) {
+      if (!deneme && (e.status === 422 || e.status === 409)) return dosyalariSil(yollar, true);
+      throw e;
+    });
   }
 
   // ---------- alt sayfalar ----------
@@ -628,7 +785,7 @@
         setTimeout(function () {
           sayac++;
           yukle(true).then(function () {
-            if (veri && veri.guncelleme !== once_) { bitir(); toast('Güncellendi'); }
+            if (veri && veri.guncelleme !== once_) { bitir(); agacYukle(true); toast('Güncellendi'); }
             else if (sayac < 16) bak();
             else { bitir(); toast('Güncelleme uzun sürdü; birazdan tekrar yenile', 4000); }
           });
@@ -643,7 +800,10 @@
     var t = e.target.closest('[data-act], nav.tabs button');
     if (!t) return;
     if (t.parentNode && t.parentNode.classList && t.parentNode.classList.contains('tabs')) {
-      aktif = t.getAttribute('data-s'); LS.set('sekme', aktif); window.scrollTo(0, 0); ciz(); return;
+      aktif = t.getAttribute('data-s'); LS.set('sekme', aktif); window.scrollTo(0, 0);
+      var sbar = document.getElementById('secbar'); if (sbar) sbar.remove();
+      if (aktif === 'rapor') agacYukle(true);
+      ciz(); return;
     }
     var act = t.getAttribute('data-act'), k = t.getAttribute('data-k');
     if (act === 'kapat') sheetKapat();
@@ -656,7 +816,31 @@
       var c = document.querySelector('[data-ort="' + k + '"]'); if (c) c.classList.toggle('open', acikOrt[k]);
       if (acikOrt[k]) { gorulduYap('ort', k); setTimeout(function () { cizKap(); rozetler(); }, 1200); }
     }
-    else if (act === 'rfiltre') { raporFiltre = k; cizRapor(); rozetler(); }
+    else if (act === 'klasor') { raporKlasor = k; secimModu = false; secili = {}; window.scrollTo(0, 0); cizRapor(); rozetler(); }
+    else if (act === 'klasorgeri') { raporKlasor = null; secimModu = false; secili = {}; window.scrollTo(0, 0); cizRapor(); }
+    else if (act === 'secmod') { secimModu = !secimModu; secili = {}; cizRapor(); }
+    else if (act === 'dosya') {
+      var yol = t.getAttribute('data-yol');
+      if (secimModu) { if (secili[yol]) delete secili[yol]; else secili[yol] = 1; cizRapor(); }
+      else pdfAc(yol, t);
+    }
+    else if (act === 'sectum' || act === 'secgenel') {
+      var hepsiSecili = true, ds = klasorDosyalari(raporKlasor).filter(function (d) { return act === 'sectum' || !d.meta.ilgili; });
+      ds.forEach(function (d) { if (!secili[d.yol]) hepsiSecili = false; });
+      ds.forEach(function (d) { if (hepsiSecili) delete secili[d.yol]; else secili[d.yol] = 1; });
+      cizRapor();
+    }
+    else if (act === 'silsecili') {
+      var yollar = Object.keys(secili), sb = 0;
+      (agac || []).forEach(function (d) { if (secili[d.yol]) sb += d.boyut; });
+      if (!yollar.length) return;
+      if (!confirm(yollar.length + ' dosya (' + boyut(sb) + ') depodan silinecek ve bir daha indirilmeyecek. Bu işlem uygulamadan geri alınamaz. Devam edilsin mi?')) return;
+      t.disabled = true; t.textContent = 'Siliniyor…';
+      dosyalariSil(yollar).then(function () {
+        agac = (agac || []).filter(function (d) { return !secili[d.yol]; });
+        toast(yollar.length + ' dosya silindi'); secili = {}; secimModu = false; cizRapor();
+      }).catch(function (er) { toast('Silinemedi: ' + er.message, 6000); cizRapor(); });
+    }
     else if (act === 'tur') { islemTur = t.getAttribute('data-t'); document.querySelectorAll('.seg button').forEach(function (b) { b.classList.toggle('on', b === t); }); }
     else if (act === 'takipekle') {
       var kod = $('yeniKod').value.trim().toUpperCase();
@@ -717,14 +901,15 @@
 
   function pdfAc(yol, btn) {
     var w = window.open('', '_blank');
-    btn.disabled = true; var eski = btn.textContent; btn.textContent = 'Açılıyor…';
+    var dugme = btn.tagName === 'BUTTON', eski = btn.innerHTML;
+    if (dugme) { btn.disabled = true; btn.textContent = 'Açılıyor…'; } else btn.style.opacity = '.5';
     api(depo() + '/contents/' + yol.split('/').map(encodeURIComponent).join('/') + '?ref=main', { accept: 'application/vnd.github.raw+json', ham: 'blob' })
       .then(function (b) {
         var url = URL.createObjectURL(new Blob([b], { type: 'application/pdf' }));
         if (w) w.location.href = url; else location.href = url;
       })
       .catch(function (er) { if (w) w.close(); toast('PDF açılamadı: ' + er.message, 5000); })
-      .then(function () { btn.disabled = false; btn.textContent = eski; });
+      .then(function () { if (dugme) { btn.disabled = false; btn.innerHTML = eski; } else btn.style.opacity = ''; });
   }
 
 
