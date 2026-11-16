@@ -163,7 +163,7 @@
   label.f { display: block; font-size: 13px; color: var(--muted); font-weight: 600; margin: 12px 0 5px; }
   input.f, select.f, textarea.f { width: 100%; font: inherit; font-size: 16px; padding: 11px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--ink); }
   .seg { display: flex; background: var(--track); border-radius: 12px; padding: 3px; }
-  .seg button { flex: 1; border: 0; background: none; font: inherit; font-weight: 650; padding: 9px; border-radius: 10px; color: var(--muted); cursor: pointer; }
+  .seg button { flex: 1; border: 0; background: none; font: inherit; font-weight: 650; padding: 9px 4px; border-radius: 10px; color: var(--muted); cursor: pointer; }
   .seg button.on { background: var(--card); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.1); }
   .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .hint { font-size: 13px; color: var(--muted); margin-top: 8px; }
@@ -241,7 +241,7 @@
     set: function (k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
   };
   var cfg = LS.get('cfg', null);
-  var veri = null, takip = { hisseler: [] }, takipSha = null, portfoy = { islemler: [] }, portfoySha = null;
+  var veri = null, takip = { hisseler: [] }, takipSha = null, portfoy = { islemler: [] }, portfoySha = null, kurumsal = { olaylar: {} };
   var aktif = LS.get('sekme', 'kap');
   var $ = function (id) { return document.getElementById(id); };
   var TL = new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -388,11 +388,13 @@
       api(depo() + '/contents/veri.json?ref=main', { accept: 'application/vnd.github.raw+json', ham: 'text', bos404: true }),
       dosyaOku('takip.json'), dosyaOku('portfoy.json'),
       api(depo() + '/contents/gecmis.json?ref=main', { accept: 'application/vnd.github.raw+json', ham: 'text', bos404: true }).catch(function () { return null; }),
+      api(depo() + '/contents/kurumsal.json?ref=main', { accept: 'application/vnd.github.raw+json', ham: 'text', bos404: true }).catch(function () { return null; }),
       api(depo() + '/contents/durum.json?ref=main', { accept: 'application/vnd.github.raw+json', ham: 'text', bos404: true })
     ]).then(function (s) {
       veri = s[0] ? JSON.parse(s[0]) : { hisseler: {}, akis: [], sonKontrol: {} };
       gecmis = s[3] ? JSON.parse(s[3]) : { seri: [] };
-      var d = s[4] ? JSON.parse(s[4]) : null;
+      kurumsal = s[4] ? JSON.parse(s[4]) : { olaylar: {} };
+      var d = s[5] ? JSON.parse(s[5]) : null;
       if (d) {
         veri.sonKontrol = Object.assign({}, veri.sonKontrol || {}, d.sonKontrol || {});
         if (!veri.guncelleme || d.guncelleme > veri.guncelleme) veri.guncelleme = d.guncelleme;
@@ -549,13 +551,60 @@
   }
 
   // ---- Portföy ----
+  // Bedelsiz/bölünme ve temettüleri işlemlere uygular (uygulama ve sunucu aynı kodu kullanır).
+  // islemler: alis/satis {kod, adet, fiyat, komisyon, tarih} · bedelsiz {kod, oran (%), tarih} · temettu {kod, tutar (brüt ₺/lot), tarih}
+  // oto: kurumsal.json olayları { KOD: [{ t, tur: 'bolunme', carpan } | { t, tur: 'temettu', tutar }] } · yoksay: ['KOD|tur|tarih']
+  // Dönen adet/fiyatlar bugünkü hisse cinsindendir: bedelsizden önce alınan lotlar oranla çarpılır, lot fiyatı bölünür (toplam maliyet aynı kalır).
+  // Temettü, hak kullanım günü elde tutulan lotlara brüt tutar kadar dışarı çıkan para olarak eklenir.
+  function hareketleriHazirla(islemler, oto, yoksay) {
+    var olay = {}, ys = {}, alsat = [], hareketler = [], olaylar = [];
+    (yoksay || []).forEach(function (x) { ys[x] = 1; });
+    function ekle(k, o) { (olay[k] = olay[k] || []).push(o); }
+    (islemler || []).forEach(function (i) {
+      if (!i || !i.tarih || !i.kod) return;
+      var k = String(i.kod).toUpperCase();
+      if (i.tur === 'bedelsiz') { var c = 1 + (Number(i.oran) || 0) / 100; if (c > 0 && c !== 1) ekle(k, { t: i.tarih, tur: 'bolunme', carpan: c, id: i.id }); }
+      else if (i.tur === 'temettu') { if (Number(i.tutar) > 0) ekle(k, { t: i.tarih, tur: 'temettu', tutar: Number(i.tutar), id: i.id }); }
+      else alsat.push(i);
+    });
+    Object.keys(oto || {}).forEach(function (k) {
+      (oto[k] || []).forEach(function (o) {
+        var anahtar = k + '|' + o.tur + '|' + o.t;
+        if (ys[anahtar]) return;
+        var elleVar = (olay[k] || []).some(function (m) { return m.id && m.tur === o.tur && Math.abs(new Date(m.t) - new Date(o.t)) <= 7 * 864e5; });
+        if (!elleVar) ekle(k, { t: o.t, tur: o.tur, carpan: o.carpan, tutar: o.tutar, anahtar: anahtar });
+      });
+    });
+    function sonraki(k, t) { var c = 1; (olay[k] || []).forEach(function (o) { if (o.tur === 'bolunme' && o.t > t) c *= o.carpan; }); return c; }
+    alsat.forEach(function (i) {
+      var k = String(i.kod).toUpperCase(), c = sonraki(k, i.tarih);
+      hareketler.push({ id: i.id, tarih: i.tarih, kod: k, tur: i.tur === 'satis' ? 'satis' : 'alis', adet: (Number(i.adet) || 0) * c, fiyat: (Number(i.fiyat) || 0) / c, komisyon: Number(i.komisyon) || 0, carpan: c });
+    });
+    Object.keys(olay).forEach(function (k) {
+      olay[k].forEach(function (o) {
+        var elde = 0;
+        hareketler.forEach(function (h) { if (h.kod === k && h.tur !== 'temettu' && h.tarih < o.t) elde += h.tur === 'satis' ? -h.adet : h.adet; });
+        var g = sonraki(k, o.t) * (o.tur === 'bolunme' ? o.carpan : 1), lot = elde / g, x = { kod: k, t: o.t, tur: o.tur, carpan: o.carpan, tutar: o.tutar, id: o.id, anahtar: o.anahtar, lot: lot > 1e-9 ? lot : 0 };
+        if (o.tur === 'temettu') {
+          x.nakit = x.lot * o.tutar;
+          if (elde > 1e-9) hareketler.push({ tarih: o.t, kod: k, tur: 'temettu', adet: elde, fiyat: o.tutar / g, komisyon: 0, carpan: g });
+        }
+        olaylar.push(x);
+      });
+    });
+    hareketler.sort(function (a, b) { return String(a.tarih).localeCompare(String(b.tarih)) || String(a.id || '').localeCompare(String(b.id || '')); });
+    olaylar.sort(function (a, b) { return String(b.t).localeCompare(String(a.t)); });
+    return { hareketler: hareketler, olaylar: olaylar };
+  }
+
+  function hazirla() { return hareketleriHazirla(portfoy.islemler, kurumsal.olaylar, portfoy.yoksay); }
   function hesapla() {
-    var poz = {}, gerceklesen = 0;
-    var isl = (portfoy.islemler || []).slice().sort(function (a, b) { return String(a.tarih).localeCompare(String(b.tarih)) || String(a.id).localeCompare(String(b.id)); });
-    isl.forEach(function (i) {
-      var k = String(i.kod).toUpperCase(), p = poz[k] || (poz[k] = { kod: k, adet: 0, maliyet: 0, gerceklesen: 0 });
-      var adet = Number(i.adet) || 0, fiyat = Number(i.fiyat) || 0, kom = Number(i.komisyon) || 0;
-      if (i.tur === 'satis') {
+    var poz = {}, gerceklesen = 0, temettu = 0, H = hazirla();
+    H.hareketler.forEach(function (i) {
+      var k = i.kod, p = poz[k] || (poz[k] = { kod: k, adet: 0, maliyet: 0, gerceklesen: 0 });
+      var adet = i.adet, fiyat = i.fiyat, kom = i.komisyon;
+      if (i.tur === 'temettu') { p.gerceklesen += adet * fiyat; gerceklesen += adet * fiyat; temettu += adet * fiyat; }
+      else if (i.tur === 'satis') {
         var ort = p.adet ? p.maliyet / p.adet : 0, sat = Math.min(adet, p.adet);
         var kz = sat * fiyat - kom - ort * sat;
         p.gerceklesen += kz; gerceklesen += kz;
@@ -576,7 +625,7 @@
     });
     acik.sort(function (a, b) { return b.deger - a.deger; });
     acik.forEach(function (p) { p.oran = toplam ? p.deger / toplam * 100 : 0; });
-    return { acik: acik, toplam: toplam, maliyet: maliyet, kz: toplam - maliyet, gunluk: gunluk, gerceklesen: gerceklesen, fiyatsiz: fiyatsiz };
+    return { acik: acik, toplam: toplam, maliyet: maliyet, kz: toplam - maliyet, gunluk: gunluk, gerceklesen: gerceklesen, temettu: temettu, fiyatsiz: fiyatsiz, olaylar: H.olaylar, hareketler: H.hareketler };
   }
 
   // ---- Getiri (IRR) ve AUM grafiği ----
@@ -612,10 +661,10 @@
     var basT = bas ? bas[0] : null, V0 = bas ? deger(bas) || 0 : 0, ak = [], net = 0;
     if (V0 > 0) ak.push({ t: basT, v: -V0 });
     seri.forEach(function (r) { if ((!basT || r[0] > basT) && r[3]) { var a = akis(r); ak.push({ t: r[0], v: -a }); net += a; } });
-    (portfoy.islemler || []).forEach(function (x) {
+    hazirla().hareketler.forEach(function (x) {
       if (x.tarih > sonSeri && (!basT || x.tarih > basT)) {
-        var tut = (Number(x.adet) || 0) * (Number(x.fiyat) || 0), kom = Number(x.komisyon) || 0;
-        var v = x.tur === 'satis' ? -(tut - kom) : tut + kom; if (usd) v = v / sonKur;
+        var tut = x.adet * x.fiyat, kom = x.komisyon;
+        var v = x.tur === 'alis' ? tut + kom : -(tut - kom); if (usd) v = v / sonKur;
         ak.push({ t: x.tarih > bugun ? bugun : x.tarih, v: -v }); net += v;
       }
     });
@@ -716,7 +765,7 @@
       + '<div><div class="k">Toplam K/Z</div><div class="v">' + isaret(s.kz, '₺' + TL.format(Math.abs(s.kz)) + ' (%' + TL.format(Math.abs(kzY)) + ')') + '</div></div>'
       + '<div><div class="k">Maliyet</div><div class="v">₺' + TL.format(s.maliyet) + '</div></div>'
       + '<div><div class="k">Gerçekleşen K/Z</div><div class="v">' + isaret(s.gerceklesen, '₺' + TL.format(Math.abs(s.gerceklesen))) + '</div></div>'
-      + '</div>' + (s.fiyatsiz ? '<div class="hint">' + s.fiyatsiz + ' hissenin fiyatı henüz yok, maliyetinden hesaplandı. Yenile düğmesine bas.</div>' : '') + '</div>';
+      + '</div>' + (s.temettu ? '<div class="hint">Gerçekleşen K/Z\'ye ₺' + TL.format(s.temettu) + ' brüt temettü dahil.</div>' : '') + (s.fiyatsiz ? '<div class="hint">' + s.fiyatsiz + ' hissenin fiyatı henüz yok, maliyetinden hesaplandı. Yenile düğmesine bas.</div>' : '') + '</div>';
 
     // Getiri (IRR) + AUM grafiği
     html += '<div class="card pad"><div class="row"><div class="grow sub">Getiri (IRR)</div>'
@@ -750,16 +799,29 @@
     }
 
     html += '<div class="sec-title"><span>İşlemler</span><button class="btn small" data-act="islem">+ İşlem ekle</button></div>';
-    var isl = (portfoy.islemler || []).slice().sort(function (a, b) { return String(b.tarih).localeCompare(String(a.tarih)) || String(b.id).localeCompare(String(a.id)); });
+    var carp = {}; s.hareketler.forEach(function (h) { if (h.id) carp[h.id] = h.carpan; });
+    var isl = (portfoy.islemler || []).filter(function (i) { return i.tur !== 'bedelsiz' && i.tur !== 'temettu'; }).sort(function (a, b) { return String(b.tarih).localeCompare(String(a.tarih)) || String(b.id).localeCompare(String(a.id)); });
     if (!isl.length) html += '<div class="card"><div class="empty">Henüz işlem yok.</div></div>';
     else {
       html += '<div class="card num">';
       isl.forEach(function (i) {
         html += '<div class="hold"><div class="row"><div class="grow"><div><b>' + esc(i.kod) + '</b> · ' + (i.tur === 'satis' ? '<span class="down">Satış</span>' : '<span class="up">Alış</span>') + '</div>'
-          + '<div class="sub">' + gun(i.tarih) + ' · ' + ADET.format(i.adet) + ' × ₺' + TL.format(i.fiyat) + (Number(i.komisyon) ? ' · kom. ₺' + TL.format(i.komisyon) : '') + (i.not ? ' · ' + esc(i.not) : '') + '</div></div>'
+          + '<div class="sub">' + gun(i.tarih) + ' · ' + ADET.format(i.adet) + ' × ₺' + TL.format(i.fiyat) + (Number(i.komisyon) ? ' · kom. ₺' + TL.format(i.komisyon) : '') + (i.not ? ' · ' + esc(i.not) : '') + '</div>'
+          + (carp[i.id] && Math.abs(carp[i.id] - 1) > 1e-9 ? '<div class="sub">Bedelsiz sonrası: ' + ADET.format(i.adet * carp[i.id]) + ' × ₺' + TL.format(i.fiyat / carp[i.id]) + '</div>' : '') + '</div>'
           + '<div class="right"><b>₺' + TL.format(i.adet * i.fiyat) + '</b><br><button class="btn danger" data-act="islemsil" data-id="' + esc(i.id) + '">Sil</button></div></div></div>';
       });
       html += '</div>';
+    }
+    var ol = s.olaylar.filter(function (o) { return o.lot > 0; });
+    if (ol.length) {
+      html += '<div class="sec-title"><span>Bedelsiz ve temettüler</span></div><div class="card num">';
+      ol.forEach(function (o) {
+        var bed = o.tur === 'bolunme';
+        html += '<div class="hold"><div class="row"><div class="grow"><div><b>' + esc(o.kod) + '</b> · ' + (bed ? 'Bedelsiz %' + ADET.format((o.carpan - 1) * 100) : 'Temettü ₺' + TL.format(o.tutar) + '/lot brüt') + '</div>'
+          + '<div class="sub">' + gun(o.t) + ' · ' + (bed ? ADET.format(o.lot) + ' lot → ' + ADET.format(o.lot * o.carpan) + ' lot' : ADET.format(o.lot) + ' lot') + ' · ' + (o.id ? 'elle girildi' : 'otomatik') + '</div></div>'
+          + '<div class="right">' + (bed ? '' : '<b>₺' + TL.format(o.nakit) + '</b><br>') + (o.id ? '<button class="btn danger" data-act="islemsil" data-id="' + esc(o.id) + '">Sil</button>' : '<button class="btn danger" data-act="olaygizle" data-k="' + esc(o.anahtar) + '">Yok say</button>') + '</div></div></div>';
+      });
+      html += '</div><div class="hint">Otomatik kayıtlar her gün 10:00 ve 19:00\'da kontrol edilir. Hatalı olanı "Yok say" ile kaldırıp doğrusunu İşlem ekle → Bedelsiz/Temettü ile girebilirsin; elle girilen kayıt otomatik olanın yerine geçer.</div>';
     }
     $('s-portfoy').innerHTML = html;
     if (aktif === 'portfoy') grafikCiz();
@@ -976,14 +1038,20 @@
   var islemTur = 'alis';
   function islemSheet() {
     var bugun = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Istanbul' }).format(new Date());
+    var onceki = {}; ['iKod', 'iTarih', 'iNot'].forEach(function (id) { if ($(id)) onceki[id] = $(id).value; });
+    var tb = function (t, ad) { return '<button data-act="tur" data-t="' + t + '" class="' + (islemTur === t ? 'on' : '') + '">' + ad + '</button>'; };
+    var alsat = islemTur === 'alis' || islemTur === 'satis';
     sheetAc('<h2><span>İşlem ekle</span><button class="btn small soft" data-act="kapat">Vazgeç</button></h2>'
-      + '<div class="seg"><button data-act="tur" data-t="alis" class="' + (islemTur === 'alis' ? 'on' : '') + '">Alış</button><button data-act="tur" data-t="satis" class="' + (islemTur === 'satis' ? 'on' : '') + '">Satış</button></div>'
+      + '<div class="seg">' + tb('alis', 'Alış') + tb('satis', 'Satış') + tb('bedelsiz', 'Bedelsiz') + tb('temettu', 'Temettü') + '</div>'
       + '<label class="f" for="iKod">Hisse kodu</label><input class="f" id="iKod" placeholder="THYAO" autocapitalize="characters" autocorrect="off" spellcheck="false" maxlength="8">'
-      + '<div class="two"><div><label class="f" for="iAdet">Adet</label><input class="f num" id="iAdet" inputmode="decimal"></div><div><label class="f" for="iFiyat">Fiyat (₺)</label><input class="f num" id="iFiyat" inputmode="decimal"></div></div>'
-      + '<div class="two"><div><label class="f" for="iTarih">Tarih</label><input class="f" id="iTarih" type="date" value="' + bugun + '"></div><div><label class="f" for="iKom">Komisyon (₺)</label><input class="f num" id="iKom" inputmode="decimal" placeholder="0"></div></div>'
+      + (alsat ? '<div class="two"><div><label class="f" for="iAdet">Adet</label><input class="f num" id="iAdet" inputmode="decimal"></div><div><label class="f" for="iFiyat">Fiyat (₺)</label><input class="f num" id="iFiyat" inputmode="decimal"></div></div>'
+        + '<div class="two"><div><label class="f" for="iTarih">Tarih</label><input class="f" id="iTarih" type="date" value="' + bugun + '"></div><div><label class="f" for="iKom">Komisyon (₺)</label><input class="f num" id="iKom" inputmode="decimal" placeholder="0"></div></div>'
+        : '<div class="two"><div><label class="f" for="iDeger">' + (islemTur === 'bedelsiz' ? 'Bedelsiz oranı (%)' : 'Hisse başı brüt (₺)') + '</label><input class="f num" id="iDeger" inputmode="decimal" placeholder="' + (islemTur === 'bedelsiz' ? '100' : '2,50') + '"></div><div><label class="f" for="iTarih">Hak kullanım tarihi</label><input class="f" id="iTarih" type="date" value="' + bugun + '"></div></div>')
       + '<label class="f" for="iNot">Not (isteğe bağlı)</label><input class="f" id="iNot">'
+      + (alsat ? '' : '<p class="hint">' + (islemTur === 'bedelsiz' ? 'Bu tarihten önce aldığın lotlar oranla çoğaltılır, lot başı maliyetin aynı oranla düşer.' : 'O gün elinde olan lotlar × brüt tutar, portföyden çıkan para olarak getiriye eklenir.') + ' Bunlar genelde otomatik gelir; elle gerekirse gir.</p>')
       + '<p id="iToplam" class="hint num"></p><button class="btn" style="width:100%" data-act="islemkaydet">Kaydet</button>');
-    ['iAdet', 'iFiyat', 'iKom'].forEach(function (id) { $(id).addEventListener('input', islemToplam); });
+    Object.keys(onceki).forEach(function (id) { if ($(id) && onceki[id]) $(id).value = onceki[id]; });
+    if (alsat) ['iAdet', 'iFiyat', 'iKom'].forEach(function (id) { $(id).addEventListener('input', islemToplam); });
   }
   function sayi(s) { s = String(s || '').trim().replace(/\s/g, ''); if (/,/.test(s)) s = s.replace(/\./g, '').replace(',', '.'); return Number(s); }
   function islemToplam() { var a = sayi($('iAdet').value), f = sayi($('iFiyat').value), k = sayi($('iKom').value) || 0; $('iToplam').textContent = a && f ? 'Tutar: ₺' + TL.format(a * f) + (k ? ' + komisyon ₺' + TL.format(k) : '') : ''; }
@@ -1082,7 +1150,13 @@
         toast(yollar.length + ' dosya silindi'); secili = {}; secimModu = false; cizRapor();
       }).catch(function (er) { toast('Silinemedi: ' + er.message, 6000); cizRapor(); });
     }
-    else if (act === 'tur') { islemTur = t.getAttribute('data-t'); document.querySelectorAll('.seg button').forEach(function (b) { b.classList.toggle('on', b === t); }); }
+    else if (act === 'tur') { islemTur = t.getAttribute('data-t'); islemSheet(); }
+    else if (act === 'olaygizle') {
+      if (!confirm('Bu otomatik kayıt yok sayılsın mı? Hesaplamalardan çıkarılır.')) return;
+      dosyaGuncelle('portfoy.json', function (v) { v = v || { islemler: [] }; v.yoksay = v.yoksay || []; if (v.yoksay.indexOf(k) < 0) v.yoksay.push(k); return v; }, 'Yok sayıldı: ' + k)
+        .then(function (r) { portfoy = r.veri; ciz(); toast('Kaldırıldı · grafik 1–3 dk içinde güncellenecek', 4000); calistir('portfoy').catch(function () {}); })
+        .catch(function (er) { toast('Kaydedilemedi: ' + er.message, 5000); });
+    }
     else if (act === 'takipekle') {
       var kod = $('yeniKod').value.trim().toUpperCase();
       if (!/^[A-Z0-9]{2,8}$/.test(kod)) { toast('Geçerli bir hisse kodu yaz'); return; }
@@ -1099,11 +1173,17 @@
         .catch(function (er) { toast('Çıkarılamadı: ' + er.message, 5000); });
     }
     else if (act === 'islemkaydet') {
-      var i = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), tur: islemTur, kod: $('iKod').value.trim().toUpperCase(),
-        adet: sayi($('iAdet').value), fiyat: sayi($('iFiyat').value), komisyon: sayi($('iKom').value) || 0, tarih: $('iTarih').value, not: $('iNot').value.trim() };
+      var i = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), tur: islemTur, kod: $('iKod').value.trim().toUpperCase(), tarih: $('iTarih').value, not: $('iNot').value.trim() };
       if (!/^[A-Z0-9]{2,8}$/.test(i.kod)) { toast('Hisse kodunu yaz'); return; }
-      if (!(i.adet > 0) || !(i.fiyat > 0)) { toast('Adet ve fiyatı kontrol et'); return; }
       if (!i.tarih) { toast('Tarihi seç'); return; }
+      if (i.tur === 'bedelsiz' || i.tur === 'temettu') {
+        var dg = sayi($('iDeger').value);
+        if (!(dg > 0)) { toast(i.tur === 'bedelsiz' ? 'Bedelsiz oranını yaz (ör. 100)' : 'Hisse başı brüt tutarı yaz'); return; }
+        if (i.tur === 'bedelsiz') i.oran = dg; else i.tutar = dg;
+      } else {
+        i.adet = sayi($('iAdet').value); i.fiyat = sayi($('iFiyat').value); i.komisyon = sayi($('iKom').value) || 0;
+        if (!(i.adet > 0) || !(i.fiyat > 0)) { toast('Adet ve fiyatı kontrol et'); return; }
+      }
       if (i.tur === 'satis') {
         var p = hesapla().acik.filter(function (x) { return x.kod === i.kod; })[0];
         if (!p || p.adet + 1e-9 < i.adet) { toast('Elindeki ' + i.kod + ' adedinden fazla satılamaz'); return; }
@@ -1111,7 +1191,7 @@
       if (!i.not) delete i.not;
       t.disabled = true;
       var fiyatYok = !hisse(i.kod).fiyat;
-      dosyaGuncelle('portfoy.json', function (v) { v = v || { islemler: [] }; v.islemler.push(i); return v; }, (i.tur === 'satis' ? 'Satış: ' : 'Alış: ') + i.kod)
+      dosyaGuncelle('portfoy.json', function (v) { v = v || { islemler: [] }; v.islemler.push(i); return v; }, ({ alis: 'Alış: ', satis: 'Satış: ', bedelsiz: 'Bedelsiz: ', temettu: 'Temettü: ' })[i.tur] + i.kod)
         .then(function (r) { portfoy = r.veri; sheetKapat(); ciz(); toast('İşlem kaydedildi · grafik 1–3 dk içinde güncellenecek', 4000); calistir('portfoy').catch(function () {}); })
         .catch(function (er) { t.disabled = false; toast('Kaydedilemedi: ' + er.message, 5000); });
     }
