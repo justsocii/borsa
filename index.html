@@ -163,6 +163,20 @@
   .grafik .imlec { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
   .grafik .nokta { fill: var(--accent); stroke: var(--card); stroke-width: 2; }
   .ipucu { position: absolute; top: 0; pointer-events: none; background: var(--ink); color: var(--bg); border-radius: 8px; padding: 5px 8px; font-size: 12px; line-height: 1.35; white-space: nowrap; font-variant-numeric: tabular-nums; display: none; }
+  .perf .seg2 { display: inline-flex; background: var(--track); border-radius: 10px; padding: 3px; }
+  .perf .seg2 button { border: 0; background: none; font: inherit; font-size: 13.5px; font-weight: 600; padding: 6px 12px; border-radius: 8px; color: var(--muted); cursor: pointer; }
+  .perf .seg2 button.on { background: var(--card); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.1); }
+  .birimbtn { border: 1px solid var(--line); background: none; font: inherit; font-size: 12.5px; font-weight: 650; color: var(--ink2); border-radius: 20px; padding: 4px 11px; cursor: pointer; }
+  .perf .pl { margin-top: 16px; font-size: 14px; color: var(--ink2); display: flex; align-items: center; gap: 6px; }
+  .perf .bilgi { width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--muted); background: none; color: var(--muted); font: 700 11px/1 Georgia, serif; padding: 0; cursor: pointer; }
+  .perf .pv { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin: 2px 0 2px; }
+  .perf .pb { font-size: 34px; font-weight: 700; letter-spacing: -0.02em; }
+  .perf .pk { font-size: 14px; font-weight: 600; }
+  .grafik .taban { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 2 4; opacity: .6; }
+  .dmn { display: flex; justify-content: space-between; margin: 10px -4px 2px; }
+  .dmn button { border: 0; background: none; font: inherit; font-size: 13.5px; font-weight: 600; color: var(--ink2); padding: 6px 8px; border-radius: 8px; cursor: pointer; }
+  .dmn button.on { background: var(--track); color: var(--ink); }
+  .yilsatir { display: flex; width: 100%; justify-content: space-between; align-items: center; border: 0; border-top: 1px solid var(--line); background: none; font: inherit; color: var(--ink); padding: 12px 0 2px; margin-top: 10px; cursor: pointer; font-size: 14.5px; font-weight: 600; }
   .birim { display: inline-flex; background: var(--track); border-radius: 8px; padding: 2px; }
   .birim button { border: 0; background: none; font: inherit; font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 6px; color: var(--muted); cursor: pointer; }
   .birim button.on { background: var(--card); color: var(--ink); }
@@ -645,7 +659,9 @@
 
   // ---- Getiri (IRR) ve AUM grafiği ----
   var gecmis = { seri: [] }, donem = LS.get('donem', 'ytd'), birim = LS.get('birim', 'usd');
-  var DONEMLER = [['1g', '1G'], ['7g', '7G'], ['1a', '1A'], ['3a', '3A'], ['6a', '6A'], ['1y', '1Y'], ['ytd', 'YTD']];
+  var DONEMLER = [['1g', '1G'], ['7g', '1H'], ['1a', '1A'], ['3a', '3A'], ['6a', '6A'], ['ytd', 'YTD'], ['1y', '1Y'], ['tum', 'Tümü']];
+  var DONEM_AD = { '1g': 'Son 1 gün', '7g': 'Son 1 hafta', '1a': 'Son 1 ay', '3a': 'Son 3 ay', '6a': 'Son 6 ay', 'ytd': 'Yılbaşından itibaren', '1y': 'Son 1 yıl', 'tum': 'Başlangıçtan itibaren' };
+  if (!DONEM_AD[donem]) donem = 'ytd';
   function bugunStr() { return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Istanbul' }).format(new Date()); }
   function tarihEkle(t, gun, ay) { var d = new Date(t + 'T12:00:00Z'); if (ay) d.setUTCMonth(d.getUTCMonth() - ay); if (gun) d.setUTCDate(d.getUTCDate() - gun); return d.toISOString().slice(0, 10); }
   function gunFark(a, b) { return (new Date(b + 'T12:00:00Z') - new Date(a + 'T12:00:00Z')) / 86400000; }
@@ -663,7 +679,7 @@
   function sonKurBul() { var seri = gecmis.seri || []; for (var i = seri.length - 1; i >= 0; i--) if (seri[i][4]) return seri[i][4]; return null; }
   function donemBasi(kod) {
     var bugun = bugunStr();
-    return kod === 'ytd' ? (Number(bugun.slice(0, 4)) - 1) + '-12-31' : kod === '1g' ? null
+    return kod === 'ytd' ? (Number(bugun.slice(0, 4)) - 1) + '-12-31' : kod === '1g' ? null : kod === 'tum' ? '0000-01-01'
       : tarihEkle(bugun, { '7g': 7 }[kod] || 0, { '1a': 1, '3a': 3, '6a': 6, '1y': 12 }[kod] || 0);
   }
   function donemGetirisi(kod, simdiTL) {
@@ -697,78 +713,57 @@
     if (xb && xs && xb[5] && xs[5] && xb !== xs) xu = usd ? (xb[4] && xs[4] ? (xs[5] / xs[4]) / (xb[5] / xb[4]) - 1 : null) : xs[5] / xb[5] - 1;
     return { oran: bekle ? null : r, kazanc: simdi - V0 - net, bas: basT || ak[0].t, gun: gun, xu: xu, bekle: bekle };
   }
-  var grafikMod = LS.get('grafikMod', 'varlik');
+  var grafikMod = LS.get('grafikMod', 'getiri'), perfBilgi = false, yillikAcik = false;
   function grafikVerisi() {
     var seri = gecmis.seri || [], bugun = bugunStr(), usd = birim === 'usd';
-    var d0 = donem === 'ytd' ? bugun.slice(0, 4) + '-01-01' : donem === '1g' ? tarihEkle(bugun, 7) : donemBasi(donem);
-    return seri.filter(function (r) { return r[0] >= d0 && (usd ? r[2] != null : true); }).map(function (r) {
-      return { t: r[0], tl: r[1], usd: r[2], kur: r[4], v: usd ? r[2] : r[1], ak: usd ? (r[4] ? r[3] / r[4] : 0) : r[3], xu: r[5] ? (usd ? (r[4] ? r[5] / r[4] : null) : r[5]) : null };
+    var sec = seri.filter(function (r) { return usd ? r[2] != null : true; });
+    var d0 = donem === '1g' ? (sec.length > 1 ? sec[sec.length - 2][0] : '') : donem === 'ytd' ? bugun.slice(0, 4) + '-01-01' : donemBasi(donem);
+    return sec.filter(function (r) { return r[0] >= d0; }).map(function (r) {
+      return { t: r[0], v: usd ? r[2] : r[1], ak: usd ? (r[4] ? r[3] / r[4] : 0) : r[3] };
+    });
+  }
+  // Performans: alış/satış ayıklanmış günlük getiri zinciri (dönem başı = %0) · Varlık akışı: toplam değer
+  function grafikSerisi(pts) {
+    if (grafikMod !== 'getiri') return pts.map(function (p) { return p.v; });
+    var idx = 1, ilk = -1;
+    return pts.map(function (p, i) {
+      if (ilk < 0) { if (p.v > 0 && !(gecmis.acilis && p.t < gecmis.acilis)) { ilk = i; return 0; } return null; }
+      var onc = pts[i - 1].v; if (onc > 0) idx *= (p.v - p.ak) / onc; return idx - 1;
     });
   }
   function grafikCiz() {
     var kutu = $('aumGrafik'); if (!kutu) return;
-    var pts = grafikVerisi(), getiri = grafikMod === 'getiri', usd = birim === 'usd';
-    if (pts.length < 2) { kutu.innerHTML = '<div class="empty" style="padding:28px 8px">' + (gecmis.seri && gecmis.seri.length ? 'Bu dönem için yeterli gün yok.' : 'Grafik, işlemler girildikten sonraki ilk akşam hesaplamasıyla oluşacak.') + '</div>'; return; }
-    // Çizgiler: varlık modunda tek çizgi; getiri modunda portföy (alış/satış ayıklanmış) ve BIST100, dönem başı = %0
-    var hatlar;
-    if (!getiri) hatlar = [{ ad: 'Toplam varlık', sinif: '', d: pts.map(function (p) { return p.v; }) }];
-    else {
-      var idx = 1, ilk = -1, pd = [], x0 = null, bd = [];
-      pts.forEach(function (p, i) {
-        if (ilk < 0) { if (p.v > 0 && !(gecmis.acilis && p.t < gecmis.acilis)) { ilk = i; pd.push(0); } else pd.push(null); }
-        else { var onc = pts[i - 1].v; if (onc > 0) idx *= (p.v - p.ak) / onc; pd.push(idx - 1); }
-        if (x0 == null && p.xu) x0 = p.xu;
-        bd.push(p.xu && x0 ? p.xu / x0 - 1 : null);
-      });
-      hatlar = [{ ad: 'Portföy', sinif: '', d: pd }, { ad: 'BIST100', sinif: 'b', d: bd }];
-    }
-    var W = Math.max(280, kutu.clientWidth || 320), H = 200, sol = 52, sag = 8, ust = 10, alt = 22;
-    var tum = []; hatlar.forEach(function (h) { h.d.forEach(function (v) { if (v != null) tum.push(v); }); });
-    var ymin = getiri ? Math.min(0, Math.min.apply(null, tum)) : 0, ymaxH = Math.max(getiri ? 0 : 1e-9, Math.max.apply(null, tum));
-    var aralikY = ymaxH - ymin || 1, adim = Math.pow(10, Math.floor(Math.log10(aralikY))), kat = [1, 2, 2.5, 5, 10], tick = adim;
-    for (var i = 0; i < kat.length; i++) { if (aralikY / (adim * kat[i]) <= 4) { tick = adim * kat[i]; break; } }
-    var ylo = Math.floor(ymin / tick) * tick, yhi = Math.ceil(ymaxH / tick) * tick; if (yhi === ylo) yhi = ylo + tick;
-    var X = function (i) { return sol + (W - sol - sag) * (i / (pts.length - 1)); };
-    var Y = function (v) { return ust + (H - ust - alt) * (1 - (v - ylo) / (yhi - ylo)); };
-    var kisa = !getiri && yhi >= 1e6 ? new Intl.NumberFormat('tr-TR', { notation: 'compact', maximumFractionDigits: 1 }) : TL0;
-    var etiket = function (v) { return getiri ? (v < -1e-12 ? '−' : '') + '%' + new Intl.NumberFormat('tr-TR', { maximumFractionDigits: tick < 0.01 ? 1 : 0 }).format(Math.abs(v * 100)) : (usd ? '$' : '₺') + kisa.format(v); };
-    var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" height="' + H + '" role="img" aria-label="' + (getiri ? 'Portföy ve BIST100 getirisi' : 'Toplam varlık') + ' grafiği">';
-    for (var v = ylo; v <= yhi + tick / 1e6; v += tick) {
-      svg += '<line class="' + (getiri && Math.abs(v) < tick / 1e6 ? 'sifir' : 'izgara') + '" x1="' + sol + '" x2="' + (W - sag) + '" y1="' + Y(v) + '" y2="' + Y(v) + '"/>'
-        + '<text class="eksen" x="' + (sol - 6) + '" y="' + (Y(v) + 4) + '" text-anchor="end">' + etiket(v) + '</text>';
-    }
-    var aylik = gunFark(pts[0].t, pts[pts.length - 1].t) > 45, sonEt = '', sonX = -99, ayAd = new Intl.DateTimeFormat('tr-TR', { month: 'short', timeZone: 'UTC' }), gAd = new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'short', timeZone: 'UTC' });
-    var aralik = Math.max(1, Math.ceil(pts.length / 5));
-    pts.forEach(function (p, i) {
-      var et = aylik ? p.t.slice(0, 7) : (i % aralik === 0 ? p.t : '');
-      if (et && et !== sonEt) { sonEt = et; var x = X(i); if (x < W - 24 && x - sonX >= 30) { sonX = x; svg += '<text class="eksen" x="' + x + '" y="' + (H - 6) + '" text-anchor="' + (i === 0 ? 'start' : 'middle') + '">' + (aylik ? ayAd : gAd).format(new Date(p.t + 'T12:00:00Z')) + '</text>'; } }
-    });
-    hatlar.slice().reverse().forEach(function (h) {
-      var yol = '', ac = false;
-      h.d.forEach(function (v, i) { if (v == null) { ac = false; return; } yol += (ac ? 'L' : 'M') + X(i).toFixed(1) + ',' + Y(v).toFixed(1); ac = true; });
-      if (!getiri) svg += '<path class="alan" d="' + yol + 'L' + X(pts.length - 1).toFixed(1) + ',' + Y(0) + 'L' + X(0) + ',' + Y(0) + 'Z"/>';
-      svg += '<path class="cizgi ' + h.sinif + '" d="' + yol + '"/>';
-    });
-    svg += '<line class="imlec" id="gImlec" y1="' + ust + '" y2="' + (H - alt) + '" style="display:none"/>'
-      + hatlar.map(function (h, k) { return '<circle class="nokta ' + h.sinif + '" id="gNokta' + k + '" r="4" style="display:none"/>'; }).join('') + '</svg><div class="ipucu" id="gIpucu"></div>';
-    kutu.innerHTML = (getiri ? '<div class="lejant"><span><i></i>Portföy</span><span><i class="b"></i>BIST100</span></div>' : '') + svg;
+    var pts = grafikVerisi(), d = grafikSerisi(pts), perf = grafikMod === 'getiri', usd = birim === 'usd';
+    var dolu = d.filter(function (v) { return v != null; });
+    if (dolu.length < 2) { kutu.innerHTML = '<div class="empty" style="padding:40px 8px">' + (gecmis.seri && gecmis.seri.length ? 'Bu dönem için yeterli veri yok.' : 'Grafik, işlemler girildikten sonraki ilk akşam hesaplamasıyla oluşacak.') + '</div>'; return; }
+    var W = Math.max(280, kutu.clientWidth || 320), H = 180, ust = 12, alt = 12;
+    var ilkV = dolu[0], sonV = dolu[dolu.length - 1], mn = Math.min.apply(null, dolu.concat([ilkV])), mx = Math.max.apply(null, dolu.concat([ilkV]));
+    var pay = (mx - mn) * 0.08 || Math.abs(mx) * 0.02 || 1; mn -= pay; mx += pay;
+    var X = function (i) { return 2 + (W - 10) * (i / (pts.length - 1)); }, Y = function (v) { return ust + (H - ust - alt) * (1 - (v - mn) / (mx - mn)); };
+    var renk = sonV >= ilkV ? 'var(--up)' : 'var(--down)', yol = '', ac = false, sonI = 0;
+    d.forEach(function (v, i) { if (v == null) { ac = false; return; } yol += (ac ? 'L' : 'M') + X(i).toFixed(1) + ',' + Y(v).toFixed(1); ac = true; sonI = i; });
+    kutu.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" height="' + H + '" role="img" aria-label="' + (perf ? 'Performans' : 'Toplam varlık') + ' grafiği">'
+      + '<line class="taban" x1="0" x2="' + W + '" y1="' + Y(ilkV) + '" y2="' + Y(ilkV) + '"/>'
+      + '<path class="cizgi" style="stroke:' + renk + '" d="' + yol + '"/>'
+      + '<circle cx="' + X(sonI) + '" cy="' + Y(d[sonI]) + '" r="4" style="fill:' + renk + '"/>'
+      + '<line class="imlec" id="gImlec" y1="0" y2="' + H + '" style="display:none"/><circle class="nokta" id="gNokta0" r="5" style="display:none;fill:' + renk + '"/></svg><div class="ipucu" id="gIpucu"></div>';
     var el = kutu.querySelector('svg');
-    function yuzde(v) { return v == null ? '—' : (v >= 0 ? '+' : '−') + '%' + TL.format(Math.abs(v * 100)); }
     function goster(e) {
       var r = el.getBoundingClientRect(), cx = ((e.touches ? e.touches[0].clientX : e.clientX) - r.left) * (W / r.width);
-      var i = Math.round((cx - sol) / ((W - sol - sag) / (pts.length - 1))); i = Math.max(0, Math.min(pts.length - 1, i));
-      var p = pts[i], x = X(i), im = $('gImlec'), ip = $('gIpucu');
+      var i = Math.round((cx - 2) / ((W - 10) / (pts.length - 1))); i = Math.max(0, Math.min(pts.length - 1, i));
+      if (d[i] == null) return;
+      var x = X(i), im = $('gImlec'), n = $('gNokta0'), ip = $('gIpucu');
       im.setAttribute('x1', x); im.setAttribute('x2', x); im.style.display = '';
-      hatlar.forEach(function (h, k) { var n = $('gNokta' + k), v = h.d[i]; if (v == null) { n.style.display = 'none'; return; } n.setAttribute('cx', x); n.setAttribute('cy', Y(v)); n.style.display = ''; });
-      ip.innerHTML = gun(p.t) + (getiri ? '<br>Portföy <b>' + yuzde(hatlar[0].d[i]) + '</b><br>BIST100 <b>' + yuzde(hatlar[1].d[i]) + '</b>'
-        : '<br><b>$' + TL.format(p.usd || 0) + '</b> · ₺' + TL0.format(p.tl) + (p.kur ? '<br>Kur ' + TL.format(p.kur) : ''));
+      n.setAttribute('cx', x); n.setAttribute('cy', Y(d[i])); n.style.display = '';
+      ip.innerHTML = gun(pts[i].t) + '<br><b>' + (perf ? (d[i] >= 0 ? '+' : '−') + '%' + TL.format(Math.abs(d[i] * 100)) : (usd ? '$' : '₺') + TL.format(d[i])) + '</b>';
       ip.style.display = 'block';
       var px = x * (r.width / W), w = ip.offsetWidth; ip.style.left = Math.max(0, Math.min(r.width - w, px - w / 2)) + 'px';
     }
-    function gizle() { ['gImlec', 'gIpucu', 'gNokta0', 'gNokta1'].forEach(function (id) { var x = $(id); if (x) x.style.display = 'none'; }); }
+    function gizle() { ['gImlec', 'gIpucu', 'gNokta0'].forEach(function (id) { var x = $(id); if (x) x.style.display = 'none'; }); }
     el.addEventListener('mousemove', goster); el.addEventListener('touchstart', goster, { passive: true }); el.addEventListener('touchmove', goster, { passive: true });
     el.addEventListener('mouseleave', gizle); el.addEventListener('touchend', function () { setTimeout(gizle, 1500); });
   }
+
 
   function cizPortfoy() {
     var s = hesapla(), html = '';
@@ -785,23 +780,25 @@
       + '<div><div class="k">Gerçekleşen K/Z</div><div class="v">' + isaret(s.gerceklesen, '₺' + TL.format(Math.abs(s.gerceklesen))) + '</div></div>'
       + '</div>' + (s.temettu ? '<div class="hint">Gerçekleşen K/Z\'ye ₺' + TL.format(s.temettu) + ' brüt temettü dahil.</div>' : '') + (s.fiyatsiz ? '<div class="hint">' + s.fiyatsiz + ' hissenin fiyatı henüz yok, maliyetinden hesaplandı. Yenile düğmesine bas.</div>' : '') + '</div>';
 
-    // Getiri (IRR) + AUM grafiği
-    html += '<div class="card pad"><div class="row"><div class="grow sub">Getiri (IRR)</div>'
-      + '<span class="birim"><button data-act="birim" data-k="usd" class="' + (birim === 'usd' ? 'on' : '') + '">USD</button><button data-act="birim" data-k="tl" class="' + (birim === 'tl' ? 'on' : '') + '">TL</button></span></div>'
-      + '<div class="donem">' + DONEMLER.map(function (d) { return '<button data-act="donem" data-k="' + d[0] + '" class="' + (donem === d[0] ? 'on' : '') + '">' + d[1] + '</button>'; }).join('') + '</div>';
-    if (g && g.oran != null) {
-      html += '<div class="getiri num"><span class="p">' + isaret(g.oran, '%' + TL.format(Math.abs(g.oran * 100))) + '</span><span class="sub">' + isaret(g.kazanc, (birim === 'usd' ? '$' : '₺') + TL.format(Math.abs(g.kazanc))) + ' · ' + gun(g.bas) + '\'den beri</span></div>'
-        + (g.xu != null ? '<div class="sub num" style="margin-top:4px">BIST100 aynı dönemde: ' + isaret(g.xu, '%' + TL.format(Math.abs(g.xu * 100))) + ' <span style="opacity:.8">(son kapanış)</span></div>' : '');
-    } else if (g && g.bekle) {
-      html += '<div class="sub" style="white-space:normal">Bu dönemin getirisi, geçmiş getiri verilerin eklenince hesaplanacak. Açılış tarihinden (' + gun(gecmis.acilis) + ') sonraki dönemler kendiliğinden hesaplanır.</div>'
-        + (g.xu != null ? '<div class="sub num" style="margin-top:4px">BIST100 aynı dönemde: ' + isaret(g.xu, '%' + TL.format(Math.abs(g.xu * 100))) + '</div>' : '');
-    } else html += '<div class="sub">' + (seri.length ? 'Bu dönem için hesaplanacak veri yok.' : 'Getiri, işlemler girildikten sonraki ilk akşam hesaplamasından itibaren görünür.') + '</div>';
-    html += '<div class="row" style="margin-top:14px"><div class="grow sub">' + (grafikMod === 'getiri' ? 'Getiri karşılaştırması (' : 'Toplam varlık (') + (birim === 'usd' ? 'USD' : 'TL') + ')</div>'
-      + '<span class="birim"><button data-act="grafikmod" data-k="varlik" class="' + (grafikMod === 'varlik' ? 'on' : '') + '">Varlık</button><button data-act="grafikmod" data-k="getiri" class="' + (grafikMod === 'getiri' ? 'on' : '') + '">Getiri</button></span></div>'
+    // Performans / Varlık akışı kartı
+    var usdB = birim === 'usd', para = usdB ? '$' : '₺', pts0 = grafikVerisi(), perf = grafikMod === 'getiri';
+    var tutar = function (v) { return isaret(v, para + TL.format(Math.abs(v))); };
+    html += '<div class="card pad perf"><div class="row"><span class="seg2">'
+      + '<button data-act="grafikmod" data-k="getiri" class="' + (perf ? 'on' : '') + '">Performans</button><button data-act="grafikmod" data-k="varlik" class="' + (!perf ? 'on' : '') + '">Varlık akışı</button></span>'
+      + '<span class="grow"></span><button class="birimbtn" data-act="birim" data-k="' + (usdB ? 'tl' : 'usd') + '">' + (usdB ? '$ USD' : '₺ TL') + '</button></div>'
+      + '<div class="pl">' + (perf ? DONEM_AD[donem] : 'Toplam varlık') + '<button class="bilgi" data-act="perfbilgi" aria-label="Açıklama">i</button></div><div class="pv num">';
+    if (perf) {
+      if (g && g.oran != null) html += '<span class="pb ' + (g.oran >= 0 ? 'up' : 'down') + '">' + (g.oran >= 0 ? '' : '−') + '%' + TL.format(Math.abs(g.oran * 100)) + '</span><span class="pk">' + tutar(g.kazanc) + '</span>';
+      else html += '<span class="pb">—</span><span class="pk">' + (g && g.bekle ? 'Bu dönem için geçmiş getiri verisi yok' : 'Veri bekleniyor') + '</span>';
+    } else {
+      var simdiB = usdB ? (sonKur ? s.toplam / sonKur : null) : s.toplam, ilkB = pts0.length ? pts0[0].v : null;
+      html += '<span class="pb">' + (simdiB != null ? para + TL.format(simdiB) : '—') + '</span>' + (simdiB != null && ilkB != null ? '<span class="pk">' + tutar(simdiB - ilkB) + '</span>' : '');
+    }
+    html += '</div>' + (perf && g && g.xu != null ? '<div class="sub num">BIST100 aynı dönemde ' + (g.xu >= 0 ? '+' : '−') + '%' + TL.format(Math.abs(g.xu * 100)) + '</div>' : '')
+      + (perfBilgi ? '<div class="hint">' + (perf ? 'Büyük rakam IRR\'dır: para giriş ve çıkışlarının zamanlamasını hesaba katar. Grafik ise alış/satış tutarları ayıklanmış günlük getiri zinciridir, bu yüzden ikisi birebir aynı olmayabilir.' : 'Her akşamki kapanış değeri; USD\'de TCMB dolar satış kuruna bölünür. Yanındaki rakam dönem içindeki değişimdir (para giriş/çıkışları dahil).') + (gecmis.notlar && gecmis.notlar.length ? ' Not: ' + esc(gecmis.notlar.join(' · ')) : '') + '</div>' : '')
       + '<div class="grafik" id="aumGrafik"></div>'
-      + '<div class="hint">' + (grafikMod === 'getiri' ? 'Portföy çizgisinde alış/satış tutarları ayıklanır (günlük getiri zinciri); üstteki IRR ile birebir aynı olmayabilir.' : 'Her akşam kapanış değeri TCMB dolar satış kuruna bölünerek hesaplanır.') + (gecmis.notlar && gecmis.notlar.length ? ' Not: ' + esc(gecmis.notlar.join(' · ')) : '') + '</div></div>';
-
-    html += yillikHtml();
+      + '<div class="dmn">' + DONEMLER.map(function (d) { return '<button data-act="donem" data-k="' + d[0] + '" class="' + (donem === d[0] ? 'on' : '') + '">' + d[1] + '</button>'; }).join('') + '</div>'
+      + yillikHtml() + '</div>';
 
     html += '<div class="sec-title"><span>Hisse oranları</span></div>';
     if (!s.acik.length) html += '<div class="card"><div class="empty">Henüz pozisyon yok.<br><br><button class="btn" data-act="islem">İlk işlemi ekle</button></div></div>';
@@ -870,20 +867,24 @@
     var Y = yillik.yillar || {}, yillar = Object.keys(Y).sort(), usd = birim === 'usd';
     if (!yillar.length) return '';
     var yz = function (v) { return v == null ? '—' : isaret(v, '%' + TL.format(Math.abs(v * 100))); };
-    var h = '<div class="card pad"><div class="row"><div class="grow sub">Yıllık getiriler (IRR · ' + (usd ? 'USD' : 'TL') + ')</div></div>';
+    var sonY = yillar[yillar.length - 1], sonR = yilIRR([Y[sonY]], usd);
+    var h = '<button class="yilsatir" data-act="yillikac"><span>Yıllık getiriler</span><span class="sub num">' + sonY + ': ' + yz(sonR && sonR.toplam) + ' ' + (yillikAcik ? '▾' : '▸') + '</span></button>';
+    if (!yillikAcik) return h;
+    h += '<div class="num">';
     yillar.slice().reverse().forEach(function (y) {
       var r = yilIRR([Y[y]], usd);
-      h += '<div class="row num" style="padding:7px 0;border-bottom:1px solid var(--line)"><div class="grow"><b>' + y + '</b> <span class="sub">' + (Y[y].kapali ? '' : '· devam ediyor (' + gun(Y[y].son[0]) + ')') + '</span></div><b>' + yz(r && r.toplam) + '</b></div>';
+      h += '<div class="row" style="padding:8px 0;border-bottom:1px solid var(--line)"><div class="grow">' + y + (Y[y].kapali ? '' : ' <span class="sub">· devam ediyor</span>') + '</div><b>' + yz(r && r.toplam) + '</b></div>';
     });
     if (yillar.length >= 2) {
       var sec = [2, 3, 5, 10].filter(function (n) { return n < yillar.length; }).concat([yillar.length]);
       var n = sec.indexOf(cokYil) >= 0 ? cokYil : yillar.length;
       var c = yilIRR(yillar.slice(-n).map(function (y) { return Y[y]; }), usd);
-      h += '<div class="donem" style="margin-top:12px">' + sec.map(function (k) { return '<button data-act="cokyil" data-k="' + k + '" class="' + (k === n ? 'on' : '') + '">' + (k === yillar.length ? 'Tümü' : 'Son ' + k + ' yıl') + '</button>'; }).join('') + '</div>'
-        + '<div class="getiri num"><span class="p">' + yz(c && c.yillik) + '</span><span class="sub">yıllık · toplam ' + yz(c && c.toplam) + '</span></div>';
+      h += '<div class="dmn" style="justify-content:flex-start;gap:6px">' + sec.map(function (k) { return '<button data-act="cokyil" data-k="' + k + '" class="' + (k === n ? 'on' : '') + '">' + (k === yillar.length ? 'Tümü' : 'Son ' + k + ' yıl') + '</button>'; }).join('') + '</div>'
+        + '<div class="row"><div class="grow sub">Yıllık ortalama IRR</div><b>' + yz(c && c.yillik) + '</b></div><div class="row"><div class="grow sub">Toplam</div><b>' + yz(c && c.toplam) + '</b></div>';
     }
-    return h + '<div class="hint">Her yıl kapanınca o yılın getirisi kalıcı olarak saklanır. Çok yıllı getiri, yıllar boyunca tüm para giriş/çıkışlarıyla tek bir IRR olarak hesaplanır (yıllık getirilerin ortalaması değildir).</div></div>';
+    return h + '</div>';
   }
+
 
   // Hisse oranları pasta grafiği: en büyük 7 hisse renkli, kalanı "Diğer"
   var islemAcik = false;
@@ -1256,6 +1257,8 @@
       }).catch(function (er) { toast('Silinemedi: ' + er.message, 6000); cizRapor(); });
     }
     else if (act === 'tur') { islemTur = t.getAttribute('data-t'); islemSheet(); }
+    else if (act === 'perfbilgi') { perfBilgi = !perfBilgi; cizPortfoy(); }
+    else if (act === 'yillikac') { yillikAcik = !yillikAcik; cizPortfoy(); }
     else if (act === 'cokyil') { cokYil = Number(k); LS.set('cokYil', cokYil); cizPortfoy(); }
     else if (act === 'islemac') { islemAcik = !islemAcik; cizPortfoy(); }
     else if (act === 'olaygizle') {
