@@ -17,13 +17,13 @@
   :root {
     --bg: #f5f5f2; --card: #fff; --ink: #1b1b19; --ink2: #4a4a46; --muted: #7a7a74; --line: #e7e6e0;
     --accent: #2f5d50; --accent-soft: #e2ebe7; --up: #1d7a43; --down: #b4321f; --warn: #a8530f; --warn-soft: #fbeee3;
-    --bar: #2f5d50; --track: #ecebe5; --tab-h: 58px;
+    --bar: #2f5d50; --track: #ecebe5; --tab-h: 58px; --bist: #5a67b8;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: #141413; --card: #1e1e1c; --ink: #edece7; --ink2: #c4c3bd; --muted: #96958f; --line: #2f2f2c;
       --accent: #8fc7b2; --accent-soft: #233630; --up: #6fd194; --down: #f09684; --warn: #f0a46a; --warn-soft: #3a291c;
-      --bar: #8fc7b2; --track: #2a2a27;
+      --bar: #8fc7b2; --track: #2a2a27; --bist: #a3adf0;
     }
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -130,6 +130,29 @@
   .secbar { position: fixed; left: 0; right: 0; bottom: calc(var(--tab-h) + env(safe-area-inset-bottom)); z-index: 7; background: var(--card); border-top: 1px solid var(--line); padding: 10px 16px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .secbar .grow { font-size: 13px; color: var(--muted); }
   .btn.sil { background: var(--down); color: #fff; }
+  .donem { display: flex; gap: 4px; background: var(--track); border-radius: 10px; padding: 3px; margin: 12px 0 10px; }
+  .donem button { flex: 1; border: 0; background: none; font: inherit; font-size: 13px; font-weight: 650; padding: 6px 0; border-radius: 8px; color: var(--muted); cursor: pointer; }
+  .donem button.on { background: var(--card); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.1); }
+  .getiri { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .getiri .p { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; }
+  .grafik { position: relative; margin-top: 6px; touch-action: pan-y; }
+  .grafik svg { display: block; width: 100%; overflow: visible; }
+  .grafik .eksen { font-size: 11px; fill: var(--muted); font-variant-numeric: tabular-nums; }
+  .grafik .izgara { stroke: var(--line); stroke-width: 1; }
+  .grafik .cizgi { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+  .grafik .cizgi.b { stroke: var(--bist); }
+  .grafik .nokta.b { fill: var(--bist); }
+  .grafik .sifir { stroke: var(--muted); stroke-width: 1; opacity: .5; }
+  .lejant { display: flex; gap: 14px; font-size: 12px; color: var(--ink2); margin: 2px 0 2px; }
+  .lejant i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; vertical-align: 3px; margin-right: 5px; background: var(--accent); }
+  .lejant i.b { background: var(--bist); }
+  .grafik .alan { fill: var(--accent); opacity: .08; }
+  .grafik .imlec { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
+  .grafik .nokta { fill: var(--accent); stroke: var(--card); stroke-width: 2; }
+  .ipucu { position: absolute; top: 0; pointer-events: none; background: var(--ink); color: var(--bg); border-radius: 8px; padding: 5px 8px; font-size: 12px; line-height: 1.35; white-space: nowrap; font-variant-numeric: tabular-nums; display: none; }
+  .birim { display: inline-flex; background: var(--track); border-radius: 8px; padding: 2px; }
+  .birim button { border: 0; background: none; font: inherit; font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 6px; color: var(--muted); cursor: pointer; }
+  .birim button.on { background: var(--card); color: var(--ink); }
   /* alt sayfa (sheet) */
   .sheet-bg { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 20; display: none; }
   .sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 21; background: var(--bg); border-radius: 18px 18px 0 0; max-height: 88vh; overflow: auto; padding: 8px 16px calc(env(safe-area-inset-bottom) + 20px); display: none; max-width: 720px; margin: 0 auto; }
@@ -256,7 +279,12 @@
   function cfgKaydet(token, sifre) {
     return sifrele(token, sifre).then(function (paket) { LS.set('cfg', { user: cfg.user, repo: cfg.repo, sifreli: paket }); });
   }
-  var KILIT_DK = 5, gizlendi = 0;
+  var KILIT_DK = 10, gizlendi = 0;
+  // Doğru şifreden sonra uygulama 10 dk içinde yeniden açılırsa şifre sorulmaz
+  function oturumKaydet() { if (cfg && cfg.token) LS.set('oturum', { token: cfg.token, son: Date.now() }); }
+  function oturumSil() { LS.set('oturum', null); }
+  (function () { var o = LS.get('oturum', null); if (cfg && cfg.sifreli && o && o.token && Date.now() - o.son < KILIT_DK * 60000) { cfg.token = o.token; oturumKaydet(); } else oturumSil(); })();
+  setInterval(function () { if (!document.hidden) oturumKaydet(); }, 30000);
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function () {});
 
   // ---------- bildirimler (Web Push) ----------
@@ -359,10 +387,12 @@
     return Promise.all([
       api(depo() + '/contents/veri.json?ref=main', { accept: 'application/vnd.github.raw+json', ham: 'text', bos404: true }),
       dosyaOku('takip.json'), dosyaOku('portfoy.json'),
+      api(depo() + '/contents/gecmis.json?ref=main', { accept: 'application/vnd.github.raw+json', ham: 'text', bos404: true }).catch(function () { return null; }),
       api(depo() + '/contents/durum.json?ref=main', { accept: 'application/vnd.github.raw+json', ham: 'text', bos404: true })
     ]).then(function (s) {
       veri = s[0] ? JSON.parse(s[0]) : { hisseler: {}, akis: [], sonKontrol: {} };
-      var d = s[3] ? JSON.parse(s[3]) : null;
+      gecmis = s[3] ? JSON.parse(s[3]) : { seri: [] };
+      var d = s[4] ? JSON.parse(s[4]) : null;
       if (d) {
         veri.sonKontrol = Object.assign({}, veri.sonKontrol || {}, d.sonKontrol || {});
         if (!veri.guncelleme || d.guncelleme > veri.guncelleme) veri.guncelleme = d.guncelleme;
@@ -549,16 +579,157 @@
     return { acik: acik, toplam: toplam, maliyet: maliyet, kz: toplam - maliyet, gunluk: gunluk, gerceklesen: gerceklesen, fiyatsiz: fiyatsiz };
   }
 
+  // ---- Getiri (IRR) ve AUM grafiği ----
+  var gecmis = { seri: [] }, donem = LS.get('donem', 'ytd'), birim = LS.get('birim', 'usd');
+  var DONEMLER = [['1g', '1G'], ['7g', '7G'], ['1a', '1A'], ['3a', '3A'], ['6a', '6A'], ['1y', '1Y'], ['ytd', 'YTD']];
+  function bugunStr() { return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Istanbul' }).format(new Date()); }
+  function tarihEkle(t, gun, ay) { var d = new Date(t + 'T12:00:00Z'); if (ay) d.setUTCMonth(d.getUTCMonth() - ay); if (gun) d.setUTCDate(d.getUTCDate() - gun); return d.toISOString().slice(0, 10); }
+  function gunFark(a, b) { return (new Date(b + 'T12:00:00Z') - new Date(a + 'T12:00:00Z')) / 86400000; }
+  // XIRR: akışlar [{t, v}] (yatırılan −, alınan +). Yıllık oran döner.
+  function xirr(ak) {
+    var t0 = ak[0].t;
+    function f(r) { var s = 0; ak.forEach(function (a) { s += a.v / Math.pow(1 + r, gunFark(t0, a.t) / 365); }); return s; }
+    var lo = -0.9999, hi = 10, flo = f(lo), fhi = f(hi);
+    while (flo * fhi > 0 && hi < 1e7) { hi *= 10; fhi = f(hi); }
+    if (flo * fhi > 0) return null;
+    for (var i = 0; i < 200; i++) { var m = (lo + hi) / 2, fm = f(m); if (Math.abs(fm) < 1e-7) return m; if (flo * fm < 0) { hi = m; } else { lo = m; flo = fm; } }
+    return (lo + hi) / 2;
+  }
+  // Seçili dönemin para ağırlıklı getirisi (seçili birimde): başlangıç değeri + dönem içi alış(+)/satış(−) + bugünkü değer
+  function sonKurBul() { var seri = gecmis.seri || []; for (var i = seri.length - 1; i >= 0; i--) if (seri[i][4]) return seri[i][4]; return null; }
+  function donemBasi(kod) {
+    var bugun = bugunStr();
+    return kod === 'ytd' ? (Number(bugun.slice(0, 4)) - 1) + '-12-31' : kod === '1g' ? null
+      : tarihEkle(bugun, { '7g': 7 }[kod] || 0, { '1a': 1, '3a': 3, '6a': 6, '1y': 12 }[kod] || 0);
+  }
+  function donemGetirisi(kod, simdiTL) {
+    var seri = gecmis.seri || [], bugun = bugunStr(), usd = birim === 'usd', sonKur = sonKurBul();
+    if (usd && !sonKur) return null;
+    var deger = function (r) { return usd ? r[2] : r[1]; }, akis = function (r) { return usd ? (r[4] ? r[3] / r[4] : 0) : r[3]; };
+    var sonSeri = seri.length ? seri[seri.length - 1][0] : '', d0 = donemBasi(kod), bas = null;
+    for (var i = seri.length - 1; i >= 0; i--) { if (kod === '1g' ? seri[i][0] < bugun : seri[i][0] <= d0) { bas = seri[i]; break; } }
+    if (kod === '1g' && !bas) return null;
+    var basT = bas ? bas[0] : null, V0 = bas ? deger(bas) || 0 : 0, ak = [], net = 0;
+    if (V0 > 0) ak.push({ t: basT, v: -V0 });
+    seri.forEach(function (r) { if ((!basT || r[0] > basT) && r[3]) { var a = akis(r); ak.push({ t: r[0], v: -a }); net += a; } });
+    (portfoy.islemler || []).forEach(function (x) {
+      if (x.tarih > sonSeri && (!basT || x.tarih > basT)) {
+        var tut = (Number(x.adet) || 0) * (Number(x.fiyat) || 0), kom = Number(x.komisyon) || 0;
+        var v = x.tur === 'satis' ? -(tut - kom) : tut + kom; if (usd) v = v / sonKur;
+        ak.push({ t: x.tarih > bugun ? bugun : x.tarih, v: -v }); net += v;
+      }
+    });
+    if (!ak.length) return null;
+    ak.sort(function (a, b) { return a.t < b.t ? -1 : a.t > b.t ? 1 : 0; });
+    var simdi = usd ? simdiTL / sonKur : simdiTL;
+    ak.push({ t: bugun, v: simdi });
+    var gun = gunFark(ak[0].t, bugun), r = null;
+    if (gun >= 1) { var y = xirr(ak); r = y == null ? null : Math.pow(1 + y, gun / 365) - 1; }
+    // BIST100: dönem başı ile son kapanış arası (USD'de kurla düzeltilmiş)
+    var xb = bas || seri.filter(function (q) { return q[0] >= ak[0].t; })[0], xs = seri[seri.length - 1], xu = null;
+    if (xb && xs && xb[5] && xs[5] && xb !== xs) xu = usd ? (xb[4] && xs[4] ? (xs[5] / xs[4]) / (xb[5] / xb[4]) - 1 : null) : xs[5] / xb[5] - 1;
+    return { oran: r, kazanc: simdi - V0 - net, bas: basT || ak[0].t, gun: gun, xu: xu };
+  }
+  var grafikMod = LS.get('grafikMod', 'varlik');
+  function grafikVerisi() {
+    var seri = gecmis.seri || [], bugun = bugunStr(), usd = birim === 'usd';
+    var d0 = donem === 'ytd' ? bugun.slice(0, 4) + '-01-01' : donem === '1g' ? tarihEkle(bugun, 7) : donemBasi(donem);
+    return seri.filter(function (r) { return r[0] >= d0 && (usd ? r[2] != null : true); }).map(function (r) {
+      return { t: r[0], tl: r[1], usd: r[2], kur: r[4], v: usd ? r[2] : r[1], ak: usd ? (r[4] ? r[3] / r[4] : 0) : r[3], xu: r[5] ? (usd ? (r[4] ? r[5] / r[4] : null) : r[5]) : null };
+    });
+  }
+  function grafikCiz() {
+    var kutu = $('aumGrafik'); if (!kutu) return;
+    var pts = grafikVerisi(), getiri = grafikMod === 'getiri', usd = birim === 'usd';
+    if (pts.length < 2) { kutu.innerHTML = '<div class="empty" style="padding:28px 8px">' + (gecmis.seri && gecmis.seri.length ? 'Bu dönem için yeterli gün yok.' : 'Grafik, işlemler girildikten sonraki ilk akşam hesaplamasıyla oluşacak.') + '</div>'; return; }
+    // Çizgiler: varlık modunda tek çizgi; getiri modunda portföy (alış/satış ayıklanmış) ve BIST100, dönem başı = %0
+    var hatlar;
+    if (!getiri) hatlar = [{ ad: 'Toplam varlık', sinif: '', d: pts.map(function (p) { return p.v; }) }];
+    else {
+      var idx = 1, ilk = -1, pd = [], x0 = null, bd = [];
+      pts.forEach(function (p, i) {
+        if (ilk < 0) { if (p.v > 0) { ilk = i; pd.push(0); } else pd.push(null); }
+        else { var onc = pts[i - 1].v; if (onc > 0) idx *= (p.v - p.ak) / onc; pd.push(idx - 1); }
+        if (x0 == null && p.xu) x0 = p.xu;
+        bd.push(p.xu && x0 ? p.xu / x0 - 1 : null);
+      });
+      hatlar = [{ ad: 'Portföy', sinif: '', d: pd }, { ad: 'BIST100', sinif: 'b', d: bd }];
+    }
+    var W = Math.max(280, kutu.clientWidth || 320), H = 200, sol = 52, sag = 8, ust = 10, alt = 22;
+    var tum = []; hatlar.forEach(function (h) { h.d.forEach(function (v) { if (v != null) tum.push(v); }); });
+    var ymin = getiri ? Math.min(0, Math.min.apply(null, tum)) : 0, ymaxH = Math.max(getiri ? 0 : 1e-9, Math.max.apply(null, tum));
+    var aralikY = ymaxH - ymin || 1, adim = Math.pow(10, Math.floor(Math.log10(aralikY))), kat = [1, 2, 2.5, 5, 10], tick = adim;
+    for (var i = 0; i < kat.length; i++) { if (aralikY / (adim * kat[i]) <= 4) { tick = adim * kat[i]; break; } }
+    var ylo = Math.floor(ymin / tick) * tick, yhi = Math.ceil(ymaxH / tick) * tick; if (yhi === ylo) yhi = ylo + tick;
+    var X = function (i) { return sol + (W - sol - sag) * (i / (pts.length - 1)); };
+    var Y = function (v) { return ust + (H - ust - alt) * (1 - (v - ylo) / (yhi - ylo)); };
+    var kisa = !getiri && yhi >= 1e6 ? new Intl.NumberFormat('tr-TR', { notation: 'compact', maximumFractionDigits: 1 }) : TL0;
+    var etiket = function (v) { return getiri ? (v < -1e-12 ? '−' : '') + '%' + new Intl.NumberFormat('tr-TR', { maximumFractionDigits: tick < 0.01 ? 1 : 0 }).format(Math.abs(v * 100)) : (usd ? '$' : '₺') + kisa.format(v); };
+    var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" height="' + H + '" role="img" aria-label="' + (getiri ? 'Portföy ve BIST100 getirisi' : 'Toplam varlık') + ' grafiği">';
+    for (var v = ylo; v <= yhi + tick / 1e6; v += tick) {
+      svg += '<line class="' + (getiri && Math.abs(v) < tick / 1e6 ? 'sifir' : 'izgara') + '" x1="' + sol + '" x2="' + (W - sag) + '" y1="' + Y(v) + '" y2="' + Y(v) + '"/>'
+        + '<text class="eksen" x="' + (sol - 6) + '" y="' + (Y(v) + 4) + '" text-anchor="end">' + etiket(v) + '</text>';
+    }
+    var aylik = gunFark(pts[0].t, pts[pts.length - 1].t) > 45, sonEt = '', sonX = -99, ayAd = new Intl.DateTimeFormat('tr-TR', { month: 'short', timeZone: 'UTC' }), gAd = new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+    var aralik = Math.max(1, Math.ceil(pts.length / 5));
+    pts.forEach(function (p, i) {
+      var et = aylik ? p.t.slice(0, 7) : (i % aralik === 0 ? p.t : '');
+      if (et && et !== sonEt) { sonEt = et; var x = X(i); if (x < W - 24 && x - sonX >= 30) { sonX = x; svg += '<text class="eksen" x="' + x + '" y="' + (H - 6) + '" text-anchor="' + (i === 0 ? 'start' : 'middle') + '">' + (aylik ? ayAd : gAd).format(new Date(p.t + 'T12:00:00Z')) + '</text>'; } }
+    });
+    hatlar.slice().reverse().forEach(function (h) {
+      var yol = '', ac = false;
+      h.d.forEach(function (v, i) { if (v == null) { ac = false; return; } yol += (ac ? 'L' : 'M') + X(i).toFixed(1) + ',' + Y(v).toFixed(1); ac = true; });
+      if (!getiri) svg += '<path class="alan" d="' + yol + 'L' + X(pts.length - 1).toFixed(1) + ',' + Y(0) + 'L' + X(0) + ',' + Y(0) + 'Z"/>';
+      svg += '<path class="cizgi ' + h.sinif + '" d="' + yol + '"/>';
+    });
+    svg += '<line class="imlec" id="gImlec" y1="' + ust + '" y2="' + (H - alt) + '" style="display:none"/>'
+      + hatlar.map(function (h, k) { return '<circle class="nokta ' + h.sinif + '" id="gNokta' + k + '" r="4" style="display:none"/>'; }).join('') + '</svg><div class="ipucu" id="gIpucu"></div>';
+    kutu.innerHTML = (getiri ? '<div class="lejant"><span><i></i>Portföy</span><span><i class="b"></i>BIST100</span></div>' : '') + svg;
+    var el = kutu.querySelector('svg');
+    function yuzde(v) { return v == null ? '—' : (v >= 0 ? '+' : '−') + '%' + TL.format(Math.abs(v * 100)); }
+    function goster(e) {
+      var r = el.getBoundingClientRect(), cx = ((e.touches ? e.touches[0].clientX : e.clientX) - r.left) * (W / r.width);
+      var i = Math.round((cx - sol) / ((W - sol - sag) / (pts.length - 1))); i = Math.max(0, Math.min(pts.length - 1, i));
+      var p = pts[i], x = X(i), im = $('gImlec'), ip = $('gIpucu');
+      im.setAttribute('x1', x); im.setAttribute('x2', x); im.style.display = '';
+      hatlar.forEach(function (h, k) { var n = $('gNokta' + k), v = h.d[i]; if (v == null) { n.style.display = 'none'; return; } n.setAttribute('cx', x); n.setAttribute('cy', Y(v)); n.style.display = ''; });
+      ip.innerHTML = gun(p.t) + (getiri ? '<br>Portföy <b>' + yuzde(hatlar[0].d[i]) + '</b><br>BIST100 <b>' + yuzde(hatlar[1].d[i]) + '</b>'
+        : '<br><b>$' + TL.format(p.usd || 0) + '</b> · ₺' + TL0.format(p.tl) + (p.kur ? '<br>Kur ' + TL.format(p.kur) : ''));
+      ip.style.display = 'block';
+      var px = x * (r.width / W), w = ip.offsetWidth; ip.style.left = Math.max(0, Math.min(r.width - w, px - w / 2)) + 'px';
+    }
+    function gizle() { ['gImlec', 'gIpucu', 'gNokta0', 'gNokta1'].forEach(function (id) { var x = $(id); if (x) x.style.display = 'none'; }); }
+    el.addEventListener('mousemove', goster); el.addEventListener('touchstart', goster, { passive: true }); el.addEventListener('touchmove', goster, { passive: true });
+    el.addEventListener('mouseleave', gizle); el.addEventListener('touchend', function () { setTimeout(gizle, 1500); });
+  }
+
   function cizPortfoy() {
     var s = hesapla(), html = '';
+    var seri = gecmis.seri || [], sonKur = null;
+    for (var si = seri.length - 1; si >= 0 && !sonKur; si--) sonKur = seri[si][4];
+    var g = s.acik.length || seri.length ? donemGetirisi(donem, s.toplam) : null;
     var kzY = s.maliyet ? s.kz / s.maliyet * 100 : 0, gunY = (s.toplam - s.gunluk) ? s.gunluk / (s.toplam - s.gunluk) * 100 : 0;
     html += '<div class="card pad"><div class="sub">Toplam değer</div><div class="big num">₺' + TL.format(s.toplam) + '</div>'
+      + (sonKur ? '<div class="sub num">≈ $' + TL.format(s.toplam / sonKur) + ' · TCMB satış ' + TL.format(sonKur) + '</div>' : '')
       + '<div class="kv num">'
       + '<div><div class="k">Bugün</div><div class="v">' + isaret(s.gunluk, '₺' + TL.format(Math.abs(s.gunluk)) + ' (%' + TL.format(Math.abs(gunY)) + ')') + '</div></div>'
       + '<div><div class="k">Toplam K/Z</div><div class="v">' + isaret(s.kz, '₺' + TL.format(Math.abs(s.kz)) + ' (%' + TL.format(Math.abs(kzY)) + ')') + '</div></div>'
       + '<div><div class="k">Maliyet</div><div class="v">₺' + TL.format(s.maliyet) + '</div></div>'
       + '<div><div class="k">Gerçekleşen K/Z</div><div class="v">' + isaret(s.gerceklesen, '₺' + TL.format(Math.abs(s.gerceklesen))) + '</div></div>'
       + '</div>' + (s.fiyatsiz ? '<div class="hint">' + s.fiyatsiz + ' hissenin fiyatı henüz yok, maliyetinden hesaplandı. Yenile düğmesine bas.</div>' : '') + '</div>';
+
+    // Getiri (IRR) + AUM grafiği
+    html += '<div class="card pad"><div class="row"><div class="grow sub">Getiri (IRR)</div>'
+      + '<span class="birim"><button data-act="birim" data-k="usd" class="' + (birim === 'usd' ? 'on' : '') + '">USD</button><button data-act="birim" data-k="tl" class="' + (birim === 'tl' ? 'on' : '') + '">TL</button></span></div>'
+      + '<div class="donem">' + DONEMLER.map(function (d) { return '<button data-act="donem" data-k="' + d[0] + '" class="' + (donem === d[0] ? 'on' : '') + '">' + d[1] + '</button>'; }).join('') + '</div>';
+    if (g && g.oran != null) {
+      html += '<div class="getiri num"><span class="p">' + isaret(g.oran, '%' + TL.format(Math.abs(g.oran * 100))) + '</span><span class="sub">' + isaret(g.kazanc, (birim === 'usd' ? '$' : '₺') + TL.format(Math.abs(g.kazanc))) + ' · ' + gun(g.bas) + '\'den beri</span></div>'
+        + (g.xu != null ? '<div class="sub num" style="margin-top:4px">BIST100 aynı dönemde: ' + isaret(g.xu, '%' + TL.format(Math.abs(g.xu * 100))) + ' <span style="opacity:.8">(son kapanış)</span></div>' : '');
+    } else html += '<div class="sub">' + (seri.length ? 'Bu dönem için hesaplanacak veri yok.' : 'Getiri, işlemler girildikten sonraki ilk akşam hesaplamasından itibaren görünür.') + '</div>';
+    html += '<div class="row" style="margin-top:14px"><div class="grow sub">' + (grafikMod === 'getiri' ? 'Getiri karşılaştırması (' : 'Toplam varlık (') + (birim === 'usd' ? 'USD' : 'TL') + ')</div>'
+      + '<span class="birim"><button data-act="grafikmod" data-k="varlik" class="' + (grafikMod === 'varlik' ? 'on' : '') + '">Varlık</button><button data-act="grafikmod" data-k="getiri" class="' + (grafikMod === 'getiri' ? 'on' : '') + '">Getiri</button></span></div>'
+      + '<div class="grafik" id="aumGrafik"></div>'
+      + '<div class="hint">' + (grafikMod === 'getiri' ? 'Portföy çizgisinde alış/satış tutarları ayıklanır (günlük getiri zinciri); üstteki IRR ile birebir aynı olmayabilir.' : 'Her akşam kapanış değeri TCMB dolar satış kuruna bölünerek hesaplanır.') + (gecmis.notlar && gecmis.notlar.length ? ' Not: ' + esc(gecmis.notlar.join(' · ')) : '') + '</div></div>';
 
     html += '<div class="sec-title"><span>Hisse oranları</span></div>';
     if (!s.acik.length) html += '<div class="card"><div class="empty">Henüz pozisyon yok.<br><br><button class="btn" data-act="islem">İlk işlemi ekle</button></div></div>';
@@ -591,6 +762,7 @@
       html += '</div>';
     }
     $('s-portfoy').innerHTML = html;
+    if (aktif === 'portfoy') grafikCiz();
   }
 
   // ---- Raporlar ----
@@ -829,7 +1001,7 @@
       + '<label class="f" for="sYeni">Yeni şifre</label><input class="f" id="sYeni" type="password" autocomplete="new-password">'
       + '<label class="f" for="sYeni2">Yeni şifre tekrar</label><input class="f" id="sYeni2" type="password" autocomplete="new-password">'
       + '<p><button class="btn" style="width:100%" data-act="sifredegis">Değiştir</button></p></details>'
-      + '<div class="hint" style="margin-bottom:10px">Uygulama 5 dakikadan uzun arka planda kalınca kendini kilitler.</div>'
+      + '<div class="hint" style="margin-bottom:10px">Doğru şifreden sonra 10 dakika içinde yeniden açarsan şifre sorulmaz; 10 dakikadan uzun kapalı kalınca kilitlenir.</div>'
       + '<button class="btn danger" style="width:100%" data-act="cikis">Bu cihazdan bağlantıyı kaldır</button>');
     bildirimDurumu().then(function (d) {
       var el = $('bildirimKart'); if (!el) return;
@@ -872,7 +1044,7 @@
       aktif = t.getAttribute('data-s'); LS.set('sekme', aktif); window.scrollTo(0, 0);
       var sbar = document.getElementById('secbar'); if (sbar) sbar.remove();
       if (aktif === 'rapor') agacYukle(true);
-      ciz(); return;
+      ciz(); if (aktif === 'portfoy') grafikCiz(); return;
     }
     var act = t.getAttribute('data-act'), k = t.getAttribute('data-k');
     if (act === 'kapat') sheetKapat();
@@ -940,19 +1112,22 @@
       t.disabled = true;
       var fiyatYok = !hisse(i.kod).fiyat;
       dosyaGuncelle('portfoy.json', function (v) { v = v || { islemler: [] }; v.islemler.push(i); return v; }, (i.tur === 'satis' ? 'Satış: ' : 'Alış: ') + i.kod)
-        .then(function (r) { portfoy = r.veri; sheetKapat(); ciz(); toast('İşlem kaydedildi'); if (fiyatYok) guncelle('fiyat'); })
+        .then(function (r) { portfoy = r.veri; sheetKapat(); ciz(); toast('İşlem kaydedildi · grafik 1–3 dk içinde güncellenecek', 4000); calistir('portfoy').catch(function () {}); })
         .catch(function (er) { t.disabled = false; toast('Kaydedilemedi: ' + er.message, 5000); });
     }
     else if (act === 'islemsil') {
       var id = t.getAttribute('data-id');
       if (!confirm('Bu işlem silinsin mi?')) return;
       dosyaGuncelle('portfoy.json', function (v) { v = v || { islemler: [] }; v.islemler = v.islemler.filter(function (x) { return x.id !== id; }); return v; }, 'İşlem silindi')
-        .then(function (r) { portfoy = r.veri; ciz(); toast('Silindi'); })
+        .then(function (r) { portfoy = r.veri; ciz(); toast('Silindi'); calistir('portfoy').catch(function () {}); })
         .catch(function (er) { toast('Silinemedi: ' + er.message, 5000); });
     }
     else if (act === 'pdf') pdfAc(t.getAttribute('data-yol'), t);
     else if (act === 'calistir') { sheetKapat(); guncelle(k); }
     else if (act === 'kilitle') kilitle();
+    else if (act === 'donem') { donem = k; LS.set('donem', k); cizPortfoy(); }
+    else if (act === 'birim') { birim = k; LS.set('birim', k); cizPortfoy(); }
+    else if (act === 'grafikmod') { grafikMod = k; LS.set('grafikMod', k); cizPortfoy(); }
     else if (act === 'bildirimac') bildirimAc();
     else if (act === 'bildirimkapat') bildirimKapat();
     else if (act === 'bildirimtest') { calistir('test').then(function () { toast('Test bildirimi 1–2 dakika içinde gelecek', 4000); }).catch(function (e) { toast('Gönderilemedi: ' + e.message, 5000); }); }
@@ -964,7 +1139,7 @@
         .then(function () { cfg.sifreli = LS.get('cfg', {}).sifreli; sheetKapat(); toast('Şifre değiştirildi'); })
         .catch(function () { toast('Mevcut şifre yanlış'); });
     }
-    else if (act === 'cikis') { if (confirm('Bu cihazdaki bağlantı ve anahtar silinsin mi?')) { LS.set('cfg', null); location.reload(); } }
+    else if (act === 'cikis') { if (confirm('Bu cihazdaki bağlantı ve anahtar silinsin mi?')) { LS.set('cfg', null); oturumSil(); location.reload(); } }
   });
   $('bTakip').addEventListener('click', takipSheet);
   $('bAyar').addEventListener('click', ayarSheet);
@@ -997,6 +1172,7 @@
   }
   function kilitle() {
     if (cfg) cfg.token = null;
+    oturumSil();
     sheetKapat(); $('app').hidden = true; $('kurulum').hidden = true; $('kilit').hidden = false;
     $('lSifre').value = ''; $('lHata').style.display = 'none'; setTimeout(function () { $('lSifre').focus(); }, 50);
   }
@@ -1004,7 +1180,7 @@
   function kilidiAc() {
     var s = $('lSifre').value; if (!s) return;
     $('lAc').disabled = true;
-    coz(cfg.sifreli, s).then(function (token) { hataliDeneme = 0; cfg.token = token; basla(); })
+    coz(cfg.sifreli, s).then(function (token) { hataliDeneme = 0; cfg.token = token; oturumKaydet(); basla(); })
       .catch(function () {
         hataliDeneme++;
         var el = $('lHata'); el.textContent = 'Şifre yanlış'; el.style.display = 'block'; $('lSifre').value = '';
@@ -1015,10 +1191,10 @@
   $('lAc').addEventListener('click', kilidiAc);
   $('lSifre').addEventListener('keydown', function (e) { if (e.key === 'Enter') kilidiAc(); });
   $('lSifirla').addEventListener('click', function () {
-    if (confirm('Bu cihazdaki bağlantı silinecek; GitHub erişim anahtarını yeniden girmen gerekecek. Verilerin silinmez. Devam edilsin mi?')) { LS.set('cfg', null); location.reload(); }
+    if (confirm('Bu cihazdaki bağlantı silinecek; GitHub erişim anahtarını yeniden girmen gerekecek. Verilerin silinmez. Devam edilsin mi?')) { LS.set('cfg', null); oturumSil(); location.reload(); }
   });
   document.addEventListener('visibilitychange', function () {
-    if (document.hidden) gizlendi = Date.now();
+    if (document.hidden) { gizlendi = Date.now(); oturumKaydet(); }
     else if (cfg && cfg.token) { if (gizlendi && Date.now() - gizlendi > KILIT_DK * 60000) kilitle(); else if (!guncelleniyor) yukle(true); }
   });
   $('kBaglan').addEventListener('click', function () {
@@ -1033,7 +1209,7 @@
       return cfgKaydet(c.token, s1);
     }).then(function () {
       ['kToken', 'kSifre', 'kSifre2'].forEach(function (id) { $(id).value = ''; });
-      cfg.sifreli = LS.get('cfg', {}).sifreli; basla();
+      cfg.sifreli = LS.get('cfg', {}).sifreli; oturumKaydet(); basla();
     }).catch(function (e) { cfg = null; $('kBaglan').disabled = false; hata(e.status === 404 ? 'Depo bulunamadı ya da anahtarın bu depoya izni yok' : e.message); });
     function hata(m) { var el = $('kHata'); el.textContent = m; el.style.display = 'block'; }
   });
