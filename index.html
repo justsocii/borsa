@@ -176,6 +176,11 @@
   .dmn { display: flex; justify-content: space-between; margin: 10px -4px 2px; }
   .dmn button { border: 0; background: none; font: inherit; font-size: 13.5px; font-weight: 600; color: var(--ink2); padding: 6px 8px; border-radius: 8px; cursor: pointer; }
   .dmn button.on { background: var(--track); color: var(--ink); }
+  a.hold.sunum { display: block; color: inherit; text-decoration: none; }
+  #s-sunum .sub { white-space: normal; }
+  .etiket { flex: none; font-size: 12px; font-weight: 650; padding: 4px 9px; border-radius: 20px; background: var(--track); color: var(--ink2); margin-left: 10px; white-space: nowrap; }
+  .etiket.ok { background: var(--accent-soft); color: var(--accent); }
+  .etiket.yok { color: var(--muted); }
   .yilsatir { display: flex; width: 100%; justify-content: space-between; align-items: center; border: 0; border-top: 1px solid var(--line); background: none; font: inherit; color: var(--ink); padding: 12px 0 2px; margin-top: 10px; cursor: pointer; font-size: 14.5px; font-weight: 600; }
   .birim { display: inline-flex; background: var(--track); border-radius: 8px; padding: 2px; }
   .birim button { border: 0; background: none; font: inherit; font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 6px; color: var(--muted); cursor: pointer; }
@@ -247,11 +252,13 @@
     <section id="s-kap"></section>
     <section id="s-portfoy" hidden></section>
     <section id="s-rapor" hidden></section>
+    <section id="s-sunum" hidden></section>
   </main>
   <nav class="tabs">
     <button data-s="kap" class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 5h16M4 10h16M4 15h10M4 20h7"/></svg>KAP<span class="dot" id="d-kap" hidden></span></button>
     <button data-s="portfoy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 20h18M6 16V10M11 16V5M16 16v-8M21 16v-4"/></svg>Portföy</button>
     <button data-s="rapor"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5M10 13h6M10 17h6"/></svg>Raporlar<span class="dot" id="d-rapor" hidden></span></button>
+    <button data-s="sunum"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h18M4 4v10a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V4M12 15v3M8 21l4-3 4 3M8 11l3-3 2 2 3-3"/></svg>Sunumlar</button>
   </nav>
 </div>
 
@@ -443,14 +450,52 @@
   function ciz() {
     if (!veri) return;
     var sk = veri.sonKontrol || {};
-    var dur = aktif === 'kap' ? 'KAP son kontrol: <b>' + zaman(sk.kap) + '</b>'
+    var dur = aktif === 'kap' || aktif === 'sunum' ? 'KAP son kontrol: <b>' + zaman(sk.kap) + '</b>'
       : aktif === 'rapor' ? 'Raporlar son kontrol: <b>' + zaman(sk.rapor) + '</b>'
       : 'Fiyatlar: <b>' + zaman(sk.fiyat) + '</b> (15 dk gecikmeli)';
     $('durum').innerHTML = dur + (guncelleniyor ? ' · <b>güncelleniyor…</b>' : '');
-    $('baslik').textContent = { kap: 'KAP', portfoy: 'Portföy', rapor: 'Raporlar' }[aktif];
-    ['kap', 'portfoy', 'rapor'].forEach(function (s) { $('s-' + s).hidden = s !== aktif; });
+    $('baslik').textContent = { kap: 'KAP', portfoy: 'Portföy', rapor: 'Raporlar', sunum: 'Yatırımcı Sunumları' }[aktif];
+    $('baslik').style.fontSize = aktif === 'sunum' ? '23px' : ''; $('baslik').style.whiteSpace = aktif === 'sunum' ? 'nowrap' : '';
+    ['kap', 'portfoy', 'rapor', 'sunum'].forEach(function (s) { $('s-' + s).hidden = s !== aktif; });
     document.querySelectorAll('nav.tabs button').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-s') === aktif); });
-    cizKap(); cizPortfoy(); cizRapor(); rozetler();
+    cizKap(); cizPortfoy(); cizRapor(); cizSunum(); rozetler();
+  }
+
+  // ---------- Yatırımcı sunumları ----------
+  // Sunucu her KAP turunda son "Finansal Rapor"dan itibaren 30 gün sunum bildirimi arar (hisse.sunum)
+  function cizSunum() {
+    var kodlar = takipKodlari(), simdi = Date.now(), gruplar = { bek: [], var: [], yok: [], tablo: [] };
+    if (!kodlar.length) { $('s-sunum').innerHTML = bosTakip(); return; }
+    var kisa = function (t) { return new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'short' }).format(new Date(t)); };
+    kodlar.forEach(function (k) {
+      var h = (veri.hisseler || {})[k] || {}, s = h.sunum;
+      if (!s) gruplar.tablo.push({ k: k });
+      else if (s.sunum) gruplar['var'].push({ k: k, s: s });
+      else if (simdi <= Date.parse(s.bitis)) gruplar.bek.push({ k: k, s: s, kalan: Math.max(0, Math.ceil((Date.parse(s.bitis) - simdi) / 864e5)) });
+      else gruplar.yok.push({ k: k, s: s });
+    });
+    gruplar.bek.sort(function (a, b) { return a.kalan - b.kalan; });
+    gruplar['var'].sort(function (a, b) { return String(b.s.sunum.t).localeCompare(String(a.s.sunum.t)); });
+    var html = '<div class="hint" style="margin:0 2px 12px">Şirket çeyrek mali tablolarını KAP\'ta açıkladıktan sonra 30 gün boyunca yatırımcı sunumu bildirimi aranır. Yayınlanınca bildirim gelir.</div>';
+    var bolum = function (baslik, liste, satir) {
+      if (!liste.length) return '';
+      return '<div class="sec-title"><span>' + baslik + ' (' + liste.length + ')</span></div><div class="card">' + liste.map(satir).join('') + '</div>';
+    };
+    html += bolum('Yayınlandı', gruplar['var'], function (x) {
+      var gun = Math.round((Date.parse(x.s.sunum.t) - Date.parse(x.s.frT)) / 864e5);
+      return '<a class="hold sunum" href="' + esc(x.s.sunum.link) + '" target="_blank" rel="noopener"><div class="row"><div class="grow"><b>' + esc(x.k) + '</b><div class="sub" style="white-space:normal">' + esc(x.s.sunum.baslik) + '</div>'
+        + '<div class="sub">Mali tablo ' + kisa(x.s.frT) + ' · sunum ' + kisa(x.s.sunum.t) + (gun > 0 ? ' (' + gun + ' gün sonra)' : ' (aynı gün)') + '</div></div><span class="etiket ok">Yayınlandı ↗</span></div></a>';
+    });
+    html += bolum('Bekleniyor', gruplar.bek, function (x) {
+      return '<div class="hold"><div class="row"><div class="grow"><b>' + esc(x.k) + '</b><div class="sub">Mali tablo ' + kisa(x.s.frT) + ' · takip bitişi ' + kisa(x.s.bitis) + '</div></div><span class="etiket">' + x.kalan + ' gün kaldı</span></div></div>';
+    });
+    html += bolum('Yayınlanmadı', gruplar.yok, function (x) {
+      return '<div class="hold"><div class="row"><div class="grow"><b>' + esc(x.k) + '</b><div class="sub">Mali tablo ' + kisa(x.s.frT) + ' · 30 gün içinde KAP\'ta sunum yok</div></div><span class="etiket yok">Yok</span></div></div>';
+    });
+    html += bolum('Mali tablo bekleniyor', gruplar.tablo, function (x) {
+      return '<div class="hold"><div class="row"><div class="grow"><b>' + esc(x.k) + '</b><div class="sub">Son 30 günde finansal rapor açıklanmadı</div></div></div></div>';
+    });
+    $('s-sunum').innerHTML = html;
   }
 
   function takipKodlari() { return (takip.hisseler || []).map(function (k) { return String(k).toUpperCase(); }); }
