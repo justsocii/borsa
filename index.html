@@ -476,7 +476,7 @@
     });
     gruplar.bek.sort(function (a, b) { return a.kalan - b.kalan; });
     gruplar['var'].sort(function (a, b) { return String(b.s.sunum.t).localeCompare(String(a.s.sunum.t)); });
-    var html = '<div class="hint" style="margin:0 2px 12px">Şirket çeyrek mali tablolarını KAP\'ta açıkladıktan sonra 30 gün boyunca yatırımcı sunumu bildirimi aranır. Yayınlanınca bildirim gelir.</div>';
+    var html = '<div class="hint" style="margin:0 2px 12px">Şirket çeyrek mali tablolarını açıkladıktan sonra 30 gün boyunca KAP ve şirketin yatırımcı ilişkileri sayfası kontrol edilir. Sunum bulununca indirilir ve bildirim gelir.</div>';
     var bolum = function (baslik, liste, satir) {
       if (!liste.length) return '';
       return '<div class="sec-title"><span>' + baslik + ' (' + liste.length + ')</span></div><div class="card">' + liste.map(satir).join('') + '</div>';
@@ -490,13 +490,33 @@
       return '<div class="hold"><div class="row"><div class="grow"><b>' + esc(x.k) + '</b><div class="sub">Mali tablo ' + kisa(x.s.frT) + ' · takip bitişi ' + kisa(x.s.bitis) + '</div></div><span class="etiket">' + x.kalan + ' gün kaldı</span></div></div>';
     });
     html += bolum('Yayınlanmadı', gruplar.yok, function (x) {
-      return '<div class="hold"><div class="row"><div class="grow"><b>' + esc(x.k) + '</b><div class="sub">Mali tablo ' + kisa(x.s.frT) + ' · 30 gün içinde KAP\'ta sunum yok</div></div><span class="etiket yok">Yok</span></div></div>';
+      return '<div class="hold"><div class="row"><div class="grow"><b>' + esc(x.k) + '</b><div class="sub">Mali tablo ' + kisa(x.s.frT) + ' · 30 gün içinde sunum bulunamadı</div></div><span class="etiket yok">Yok</span></div></div>';
     });
     html += bolum('Mali tablo bekleniyor', gruplar.tablo, function (x) {
       return '<div class="hold"><div class="row"><div class="grow"><b>' + esc(x.k) + '</b><div class="sub">Son 30 günde finansal rapor açıklanmadı</div></div></div></div>';
     });
+    // İndirilen sunum dosyaları (şirket klasörleri)
+    if (sunumAgac === null && aktif === 'sunum') agacYukle();
+    if (sunumAgac === null) html += '<div class="hint" style="margin:14px 2px">Dosyalar yükleniyor…</div>';
+    else if (sunumAgac.length) {
+      var kl = {};
+      sunumAgac.forEach(function (d) { (kl[d.kod] = kl[d.kod] || []).push(d); });
+      html += '<div class="sec-title"><span>İndirilen sunumlar</span></div>';
+      Object.keys(kl).sort().forEach(function (k) {
+        var meta = {}; (((veri.hisseler || {})[k] || {}).sunumDosyalar || []).forEach(function (m) { meta[m.yol] = m; });
+        html += '<div class="sub" style="margin:10px 4px 6px;font-weight:700;color:var(--ink)">' + esc(k) + '</div><div class="card">';
+        kl[k].sort(function (a, b) { return b.ad.localeCompare(a.ad); }).forEach(function (d) {
+          var m = meta[d.yol] || {}, tarih = (d.ad.match(/^\d{4}-\d\d-\d\d/) || [''])[0];
+          html += '<div class="hold"><div class="row"><div class="grow" style="min-width:0"><div style="white-space:normal">' + esc(m.baslik || d.ad.replace(/^\d{4}-\d\d-\d\d_/, '').replace(/\.pdf$/i, '').replace(/-/g, ' ')) + '</div>'
+            + '<div class="sub">' + [tarih ? gun(tarih) : '', m.kaynak === 'kap' ? 'KAP' : m.kaynak === 'site' ? 'Şirket sitesi' : '', d.boyut ? (d.boyut / 1048576).toFixed(1) + ' MB' : ''].filter(Boolean).join(' · ') + '</div></div>'
+            + '<button class="btn small soft" data-act="pdf" data-yol="' + esc(d.yol) + '">Aç</button><button class="btn small danger" style="margin-left:6px" data-act="sunumsil" data-yol="' + esc(d.yol) + '">Sil</button></div></div>';
+        });
+        html += '</div>';
+      });
+    }
     $('s-sunum').innerHTML = html;
   }
+  var sunumAgac = null;
 
   function takipKodlari() { return (takip.hisseler || []).map(function (k) { return String(k).toUpperCase(); }); }
   function hisse(k) { return (veri.hisseler || {})[k] || { kod: k, kap: [], raporlar: [], hedefler: [], hatalar: {} }; }
@@ -1004,9 +1024,11 @@
     ]).then(function (r) {
       agac = (r[0].tree || []).filter(function (x) { return x.type === 'blob' && /^raporlar\/[^/]+\/[^/]+\.pdf$/i.test(x.path); })
         .map(function (x) { return { yol: x.path, kod: x.path.split('/')[1], ad: x.path.split('/')[2], boyut: x.size || 0 }; });
+      sunumAgac = (r[0].tree || []).filter(function (x) { return x.type === 'blob' && /^sunumlar\/[^/]+\/[^/]+\.pdf$/i.test(x.path); })
+        .map(function (x) { return { yol: x.path, kod: x.path.split('/')[1], ad: x.path.split('/')[2], boyut: x.size || 0 }; });
       silinenler = r[1].veri || { dosyalar: [], raporlar: [] };
     }).catch(function (e) { toast('Dosya listesi alınamadı: ' + e.message, 5000); })
-      .then(function () { agacYukleniyor = false; if (aktif === 'rapor') cizRapor(); });
+      .then(function () { agacYukleniyor = false; if (aktif === 'rapor') cizRapor(); if (aktif === 'sunum') cizSunum(); });
   }
   // Dosyanın bilgisi: program kaydettiyse oradan, yoksa dosya adından
   function dosyaMeta(d) {
@@ -1262,7 +1284,7 @@
     if (t.parentNode && t.parentNode.classList && t.parentNode.classList.contains('tabs')) {
       aktif = t.getAttribute('data-s'); LS.set('sekme', aktif); window.scrollTo(0, 0);
       var sbar = document.getElementById('secbar'); if (sbar) sbar.remove();
-      if (aktif === 'rapor') agacYukle(true);
+      if (aktif === 'rapor' || aktif === 'sunum') agacYukle(true);
       ciz(); if (aktif === 'portfoy') { grafikCiz(); pastaBagla(); } return;
     }
     var act = t.getAttribute('data-act'), k = t.getAttribute('data-k');
@@ -1305,6 +1327,13 @@
     else if (act === 'perfbilgi') { perfBilgi = !perfBilgi; cizPortfoy(); }
     else if (act === 'yillikac') { yillikAcik = !yillikAcik; cizPortfoy(); }
     else if (act === 'cokyil') { cokYil = Number(k); LS.set('cokYil', cokYil); cizPortfoy(); }
+    else if (act === 'sunumsil') {
+      var sy = t.getAttribute('data-yol');
+      if (!confirm('Bu sunum dosyası silinsin mi?')) return;
+      t.disabled = true;
+      dosyalariSil([sy]).then(function () { sunumAgac = (sunumAgac || []).filter(function (d) { return d.yol !== sy; }); toast('Silindi'); cizSunum(); })
+        .catch(function (er) { t.disabled = false; toast('Silinemedi: ' + er.message, 5000); });
+    }
     else if (act === 'islemac') { islemAcik = !islemAcik; cizPortfoy(); }
     else if (act === 'olaygizle') {
       if (!confirm('Bu otomatik kayıt yok sayılsın mı? Hesaplamalardan çıkarılır.')) return;
