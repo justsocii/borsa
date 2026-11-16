@@ -3,11 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
-<title>Borsa</title>
+<title>App</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="Borsa">
+<meta name="apple-mobile-web-app-title" content="App">
 <meta name="theme-color" content="#f5f5f2" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#141413" media="(prefers-color-scheme: dark)">
 <link rel="apple-touch-icon" href="icon-180.png">
@@ -153,7 +153,7 @@
 <body>
 
 <div id="kurulum" class="setup" hidden>
-  <h1>Borsa</h1>
+  <h1>App</h1>
   <p>Verilerin gizli GitHub deponda duruyor. Bu cihazdan erişmek için bir kez bağlan.</p>
   <label class="f" for="kUser">GitHub kullanıcı adı</label>
   <input class="f" id="kUser" autocapitalize="off" autocorrect="off" spellcheck="false">
@@ -171,7 +171,7 @@
 </div>
 
 <div id="kilit" class="setup" hidden>
-  <h1>Borsa</h1>
+  <h1>App</h1>
   <p>Devam etmek için şifreni gir.</p>
   <input class="f" id="lSifre" type="password" autocomplete="current-password" placeholder="Şifre">
   <p><button class="btn" id="lAc" style="width:100%">Aç</button></p>
@@ -257,6 +257,60 @@
     return sifrele(token, sifre).then(function (paket) { LS.set('cfg', { user: cfg.user, repo: cfg.repo, sifreli: paket }); });
   }
   var KILIT_DK = 5, gizlendi = 0;
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function () {});
+
+  // ---------- bildirimler (Web Push) ----------
+  function b64url(buf) { return buf2b64(buf).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
+  function b64urlBuf(t) { t = t.replace(/-/g, '+').replace(/_/g, '/'); while (t.length % 4) t += '='; return b642buf(t); }
+  function pushDestek() { return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window; }
+  // İmza anahtarı ilk kullanımda bu cihazda üretilir ve gizli depoya kaydedilir
+  function pushAnahtari() {
+    return dosyaOku('push-anahtar.json').then(function (o) {
+      if (o.veri && o.veri.public) return o.veri.public;
+      return crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign']).then(function (kp) {
+        return Promise.all([crypto.subtle.exportKey('jwk', kp.privateKey), crypto.subtle.exportKey('raw', kp.publicKey)]);
+      }).then(function (r) {
+        var pub = b64url(r[1]);
+        return dosyaGuncelle('push-anahtar.json', function (v) { return v && v.public ? v : { public: pub, private: r[0].d, olusturma: new Date().toISOString() }; }, 'Bildirim anahtarı oluşturuldu')
+          .then(function (x) { return x.veri.public; });
+      });
+    });
+  }
+  function bildirimDurumu() {
+    if (!pushDestek()) return Promise.resolve('desteklenmiyor');
+    if (Notification.permission === 'denied') return Promise.resolve('reddedildi');
+    return navigator.serviceWorker.ready.then(function (reg) { return reg.pushManager.getSubscription(); })
+      .then(function (s) { return s ? 'acik' : 'kapali'; }).catch(function () { return 'kapali'; });
+  }
+  function bildirimAc() {
+    if (!pushDestek()) { toast('Bu cihaz desteklemiyor. iPhone\'da uygulamayı ana ekrandaki simgeden aç (iOS 16.4 ve üzeri).', 6000); return; }
+    Notification.requestPermission().then(function (izin) {
+      if (izin !== 'granted') throw new Error('Bildirim izni verilmedi');
+      return Promise.all([navigator.serviceWorker.ready, pushAnahtari()]);
+    }).then(function (r) {
+      return r[0].pushManager.getSubscription().then(function (eski) {
+        return eski || r[0].pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64urlBuf(r[1]) });
+      });
+    }).then(function (sub) {
+      var j = sub.toJSON();
+      return dosyaGuncelle('abonelikler.json', function (v) {
+        v = v || { liste: [] }; v.liste = (v.liste || []).filter(function (x) { return x.endpoint !== j.endpoint; });
+        v.liste.push({ endpoint: j.endpoint, keys: j.keys, cihaz: /iPhone|iPad/.test(navigator.userAgent) ? 'iPhone' : 'Bilgisayar', eklendi: new Date().toISOString() });
+        return v;
+      }, 'Bildirim aboneliği eklendi');
+    }).then(function () { toast('Bildirimler açıldı'); ayarSheet(); })
+      .catch(function (e) { toast('Açılamadı: ' + e.message, 6000); });
+  }
+  function bildirimKapat() {
+    navigator.serviceWorker.ready.then(function (reg) { return reg.pushManager.getSubscription(); }).then(function (s) {
+      if (!s) return;
+      var ep = s.endpoint;
+      return s.unsubscribe().then(function () {
+        return dosyaGuncelle('abonelikler.json', function (v) { v = v || { liste: [] }; v.liste = (v.liste || []).filter(function (x) { return x.endpoint !== ep; }); return v; }, 'Bildirim aboneliği kaldırıldı');
+      });
+    }).then(function () { toast('Bu cihazda bildirimler kapatıldı'); ayarSheet(); })
+      .catch(function (e) { toast('Kapatılamadı: ' + e.message, 6000); });
+  }
 
   function b64enc(s) { return btoa(unescape(encodeURIComponent(s))); }
   function b64dec(s) { return decodeURIComponent(escape(atob(String(s).replace(/\s/g, '')))); }
@@ -758,6 +812,7 @@
 
   function ayarSheet() {
     sheetAc('<h2><span>Ayarlar</span><button class="btn small soft" data-act="kapat">Bitti</button></h2>'
+      + '<div class="card pad" id="bildirimKart"><div class="sub">Bildirimler</div><div><b>Kontrol ediliyor…</b></div></div>'
       + '<div class="card pad"><div class="sub">Bağlı depo</div><div><b>' + esc(cfg.user + '/' + cfg.repo) + '</b></div></div>'
       + '<div class="card pad"><div class="sub" style="white-space:normal">Otomatik kontroller: hafta içi 09:00–18:30 arası her 30 dakikada bir, her gece 00:00, hafta sonu 12:00 ve 18:00.</div></div>'
       + '<button class="btn soft" style="width:100%;margin-bottom:10px" data-act="calistir" data-k="fiyat">Sadece fiyatları güncelle</button>'
@@ -770,6 +825,14 @@
       + '<p><button class="btn" style="width:100%" data-act="sifredegis">Değiştir</button></p></details>'
       + '<div class="hint" style="margin-bottom:10px">Uygulama 5 dakikadan uzun arka planda kalınca kendini kilitler.</div>'
       + '<button class="btn danger" style="width:100%" data-act="cikis">Bu cihazdan bağlantıyı kaldır</button>');
+    bildirimDurumu().then(function (d) {
+      var el = $('bildirimKart'); if (!el) return;
+      var yazi = { acik: 'Bu cihazda açık', kapali: 'Bu cihazda kapalı', reddedildi: 'İzin reddedilmiş. iPhone Ayarlar → Bildirimler → App bölümünden aç.', desteklenmiyor: 'Bu tarayıcı desteklemiyor. iPhone\'da ana ekrandaki App simgesinden aç.' }[d];
+      el.innerHTML = '<div class="sub">Bildirimler</div><div style="margin:2px 0 10px"><b>' + yazi + '</b></div><div class="links">'
+        + (d === 'kapali' ? '<button class="btn small" data-act="bildirimac">Bildirimleri aç</button>' : '')
+        + (d === 'acik' ? '<button class="btn small" data-act="bildirimtest">Test bildirimi gönder</button><button class="btn small soft" data-act="bildirimkapat">Kapat</button>' : '')
+        + '</div>';
+    });
   }
 
   // ---------- güncelleme tetikleme ----------
@@ -884,6 +947,9 @@
     else if (act === 'pdf') pdfAc(t.getAttribute('data-yol'), t);
     else if (act === 'calistir') { sheetKapat(); guncelle(k); }
     else if (act === 'kilitle') kilitle();
+    else if (act === 'bildirimac') bildirimAc();
+    else if (act === 'bildirimkapat') bildirimKapat();
+    else if (act === 'bildirimtest') { calistir('test').then(function () { toast('Test bildirimi 1–2 dakika içinde gelecek', 4000); }).catch(function (e) { toast('Gönderilemedi: ' + e.message, 5000); }); }
     else if (act === 'sifredegis') {
       var eski = $('sEski').value, y1 = $('sYeni').value, y2 = $('sYeni2').value;
       if (y1.length < 6) { toast('Yeni şifre en az 6 karakter olmalı'); return; }
