@@ -671,6 +671,9 @@
     var sonSeri = seri.length ? seri[seri.length - 1][0] : '', d0 = donemBasi(kod), bas = null;
     for (var i = seri.length - 1; i >= 0; i--) { if (kod === '1g' ? seri[i][0] < bugun : seri[i][0] <= d0) { bas = seri[i]; break; } }
     if (kod === '1g' && !bas) return null;
+    if (!bas && seri.length) bas = seri[0];
+    // Açılıştan önceki günler yalnızca elle verilen varlık değeri: o dönemin getirisi ayrıca verilecek
+    var bekle = !!(gecmis.acilis && bas && bas[0] < gecmis.acilis);
     var basT = bas ? bas[0] : null, V0 = bas ? deger(bas) || 0 : 0, ak = [], net = 0;
     if (V0 > 0) ak.push({ t: basT, v: -V0 });
     seri.forEach(function (r) { if ((!basT || r[0] > basT) && r[3]) { var a = akis(r); ak.push({ t: r[0], v: -a }); net += a; } });
@@ -690,7 +693,7 @@
     // BIST100: dönem başı ile son kapanış arası (USD'de kurla düzeltilmiş)
     var xb = bas || seri.filter(function (q) { return q[0] >= ak[0].t; })[0], xs = seri[seri.length - 1], xu = null;
     if (xb && xs && xb[5] && xs[5] && xb !== xs) xu = usd ? (xb[4] && xs[4] ? (xs[5] / xs[4]) / (xb[5] / xb[4]) - 1 : null) : xs[5] / xb[5] - 1;
-    return { oran: r, kazanc: simdi - V0 - net, bas: basT || ak[0].t, gun: gun, xu: xu };
+    return { oran: bekle ? null : r, kazanc: simdi - V0 - net, bas: basT || ak[0].t, gun: gun, xu: xu, bekle: bekle };
   }
   var grafikMod = LS.get('grafikMod', 'varlik');
   function grafikVerisi() {
@@ -710,7 +713,7 @@
     else {
       var idx = 1, ilk = -1, pd = [], x0 = null, bd = [];
       pts.forEach(function (p, i) {
-        if (ilk < 0) { if (p.v > 0) { ilk = i; pd.push(0); } else pd.push(null); }
+        if (ilk < 0) { if (p.v > 0 && !(gecmis.acilis && p.t < gecmis.acilis)) { ilk = i; pd.push(0); } else pd.push(null); }
         else { var onc = pts[i - 1].v; if (onc > 0) idx *= (p.v - p.ak) / onc; pd.push(idx - 1); }
         if (x0 == null && p.xu) x0 = p.xu;
         bd.push(p.xu && x0 ? p.xu / x0 - 1 : null);
@@ -787,6 +790,9 @@
     if (g && g.oran != null) {
       html += '<div class="getiri num"><span class="p">' + isaret(g.oran, '%' + TL.format(Math.abs(g.oran * 100))) + '</span><span class="sub">' + isaret(g.kazanc, (birim === 'usd' ? '$' : '₺') + TL.format(Math.abs(g.kazanc))) + ' · ' + gun(g.bas) + '\'den beri</span></div>'
         + (g.xu != null ? '<div class="sub num" style="margin-top:4px">BIST100 aynı dönemde: ' + isaret(g.xu, '%' + TL.format(Math.abs(g.xu * 100))) + ' <span style="opacity:.8">(son kapanış)</span></div>' : '');
+    } else if (g && g.bekle) {
+      html += '<div class="sub" style="white-space:normal">Bu dönemin getirisi, geçmiş getiri verilerin eklenince hesaplanacak. Açılış tarihinden (' + gun(gecmis.acilis) + ') sonraki dönemler kendiliğinden hesaplanır.</div>'
+        + (g.xu != null ? '<div class="sub num" style="margin-top:4px">BIST100 aynı dönemde: ' + isaret(g.xu, '%' + TL.format(Math.abs(g.xu * 100))) + '</div>' : '');
     } else html += '<div class="sub">' + (seri.length ? 'Bu dönem için hesaplanacak veri yok.' : 'Getiri, işlemler girildikten sonraki ilk akşam hesaplamasından itibaren görünür.') + '</div>';
     html += '<div class="row" style="margin-top:14px"><div class="grow sub">' + (grafikMod === 'getiri' ? 'Getiri karşılaştırması (' : 'Toplam varlık (') + (birim === 'usd' ? 'USD' : 'TL') + ')</div>'
       + '<span class="birim"><button data-act="grafikmod" data-k="varlik" class="' + (grafikMod === 'varlik' ? 'on' : '') + '">Varlık</button><button data-act="grafikmod" data-k="getiri" class="' + (grafikMod === 'getiri' ? 'on' : '') + '">Getiri</button></span></div>'
