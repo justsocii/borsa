@@ -1,6 +1,6 @@
 {
-  "name": "Borsa",
-  "short_name": "Borsa",
+  "name": "App",
+  "short_name": "App",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#f5f5f2",
