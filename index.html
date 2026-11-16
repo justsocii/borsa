@@ -254,7 +254,7 @@
     set: function (k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
   };
   var cfg = LS.get('cfg', null);
-  var veri = null, takip = { hisseler: [] }, takipSha = null, portfoy = { islemler: [] }, portfoySha = null, kurumsal = { olaylar: {} };
+  var veri = null, takip = { hisseler: [] }, takipSha = null, portfoy = { islemler: [] }, portfoySha = null, kurumsal = { olaylar: {} }, yillik = { yillar: {} }, cokYil = LS.get('cokYil', 0);
   var aktif = LS.get('sekme', 'kap');
   var $ = function (id) { return document.getElementById(id); };
   var TL = new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -402,12 +402,14 @@
       dosyaOku('takip.json'), dosyaOku('portfoy.json'),
       api(depo() + '/contents/gecmis.json?ref=main', { accept: 'application/vnd.github.raw+json', ham: 'text', bos404: true }).catch(function () { return null; }),
       api(depo() + '/contents/kurumsal.json?ref=main', { accept: 'application/vnd.github.raw+json', ham: 'text', bos404: true }).catch(function () { return null; }),
+      api(depo() + '/contents/yillik.json?ref=main', { accept: 'application/vnd.github.raw+json', ham: 'text', bos404: true }).catch(function () { return null; }),
       api(depo() + '/contents/durum.json?ref=main', { accept: 'application/vnd.github.raw+json', ham: 'text', bos404: true })
     ]).then(function (s) {
       veri = s[0] ? JSON.parse(s[0]) : { hisseler: {}, akis: [], sonKontrol: {} };
       gecmis = s[3] ? JSON.parse(s[3]) : { seri: [] };
       kurumsal = s[4] ? JSON.parse(s[4]) : { olaylar: {} };
-      var d = s[5] ? JSON.parse(s[5]) : null;
+      yillik = s[5] ? JSON.parse(s[5]) : { yillar: {} };
+      var d = s[6] ? JSON.parse(s[6]) : null;
       if (d) {
         veri.sonKontrol = Object.assign({}, veri.sonKontrol || {}, d.sonKontrol || {});
         if (!veri.guncelleme || d.guncelleme > veri.guncelleme) veri.guncelleme = d.guncelleme;
@@ -799,6 +801,8 @@
       + '<div class="grafik" id="aumGrafik"></div>'
       + '<div class="hint">' + (grafikMod === 'getiri' ? 'Portföy çizgisinde alış/satış tutarları ayıklanır (günlük getiri zinciri); üstteki IRR ile birebir aynı olmayabilir.' : 'Her akşam kapanış değeri TCMB dolar satış kuruna bölünerek hesaplanır.') + (gecmis.notlar && gecmis.notlar.length ? ' Not: ' + esc(gecmis.notlar.join(' · ')) : '') + '</div></div>';
 
+    html += yillikHtml();
+
     html += '<div class="sec-title"><span>Hisse oranları</span></div>';
     if (!s.acik.length) html += '<div class="card"><div class="empty">Henüz pozisyon yok.<br><br><button class="btn" data-act="islem">İlk işlemi ekle</button></div></div>';
     else {
@@ -848,6 +852,37 @@
     }
     $('s-portfoy').innerHTML = html;
     if (aktif === 'portfoy') { grafikCiz(); pastaBagla(); }
+  }
+
+  // Yıllık IRR arşivi (yillik.json): her yıl ayrı; birden fazla yıl varsa seçilen yıl sayısı için birleşik IRR
+  function yilIRR(liste, usd) {
+    if (!liste.length) return null;
+    var k = usd ? 2 : 1, ilk = liste[0], son = liste[liste.length - 1];
+    if (!(ilk.bas[k] > 0)) return null;
+    var ak = [{ t: ilk.bas[0], v: -ilk.bas[k] }];
+    liste.forEach(function (y) { y.akis.forEach(function (a) { var v = usd ? a[2] : a[1]; if (v) ak.push({ t: a[0], v: -v }); }); });
+    ak.push({ t: son.son[0], v: son.son[k] });
+    var gun = gunFark(ilk.bas[0], son.son[0]); if (gun < 1) return null;
+    var r = xirr(ak); if (r == null) return null;
+    return { yillik: r, toplam: Math.pow(1 + r, gun / 365) - 1, gun: gun };
+  }
+  function yillikHtml() {
+    var Y = yillik.yillar || {}, yillar = Object.keys(Y).sort(), usd = birim === 'usd';
+    if (!yillar.length) return '';
+    var yz = function (v) { return v == null ? '—' : isaret(v, '%' + TL.format(Math.abs(v * 100))); };
+    var h = '<div class="card pad"><div class="row"><div class="grow sub">Yıllık getiriler (IRR · ' + (usd ? 'USD' : 'TL') + ')</div></div>';
+    yillar.slice().reverse().forEach(function (y) {
+      var r = yilIRR([Y[y]], usd);
+      h += '<div class="row num" style="padding:7px 0;border-bottom:1px solid var(--line)"><div class="grow"><b>' + y + '</b> <span class="sub">' + (Y[y].kapali ? '' : '· devam ediyor (' + gun(Y[y].son[0]) + ')') + '</span></div><b>' + yz(r && r.toplam) + '</b></div>';
+    });
+    if (yillar.length >= 2) {
+      var sec = [2, 3, 5, 10].filter(function (n) { return n < yillar.length; }).concat([yillar.length]);
+      var n = sec.indexOf(cokYil) >= 0 ? cokYil : yillar.length;
+      var c = yilIRR(yillar.slice(-n).map(function (y) { return Y[y]; }), usd);
+      h += '<div class="donem" style="margin-top:12px">' + sec.map(function (k) { return '<button data-act="cokyil" data-k="' + k + '" class="' + (k === n ? 'on' : '') + '">' + (k === yillar.length ? 'Tümü' : 'Son ' + k + ' yıl') + '</button>'; }).join('') + '</div>'
+        + '<div class="getiri num"><span class="p">' + yz(c && c.yillik) + '</span><span class="sub">yıllık · toplam ' + yz(c && c.toplam) + '</span></div>';
+    }
+    return h + '<div class="hint">Her yıl kapanınca o yılın getirisi kalıcı olarak saklanır. Çok yıllı getiri, yıllar boyunca tüm para giriş/çıkışlarıyla tek bir IRR olarak hesaplanır (yıllık getirilerin ortalaması değildir).</div></div>';
   }
 
   // Hisse oranları pasta grafiği: en büyük 7 hisse renkli, kalanı "Diğer"
@@ -1221,6 +1256,7 @@
       }).catch(function (er) { toast('Silinemedi: ' + er.message, 6000); cizRapor(); });
     }
     else if (act === 'tur') { islemTur = t.getAttribute('data-t'); islemSheet(); }
+    else if (act === 'cokyil') { cokYil = Number(k); LS.set('cokYil', cokYil); cizPortfoy(); }
     else if (act === 'islemac') { islemAcik = !islemAcik; cizPortfoy(); }
     else if (act === 'olaygizle') {
       if (!confirm('Bu otomatik kayıt yok sayılsın mı? Hesaplamalardan çıkarılır.')) return;
