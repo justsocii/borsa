@@ -17,13 +17,13 @@
   :root {
     --bg: #f5f5f2; --card: #fff; --ink: #1b1b19; --ink2: #4a4a46; --muted: #7a7a74; --line: #e7e6e0;
     --accent: #2f5d50; --accent-soft: #e2ebe7; --up: #1d7a43; --down: #b4321f; --warn: #a8530f; --warn-soft: #fbeee3;
-    --bar: #2f5d50; --track: #ecebe5; --tab-h: 58px; --bist: #5a67b8;
+    --bar: #2f5d50; --track: #ecebe5; --tab-h: 58px; --bist: #5a67b8; --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4; --s6: #008300; --s7: #6250d6; --s0: #a3a29c;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: #141413; --card: #1e1e1c; --ink: #edece7; --ink2: #c4c3bd; --muted: #96958f; --line: #2f2f2c;
       --accent: #8fc7b2; --accent-soft: #233630; --up: #6fd194; --down: #f09684; --warn: #f0a46a; --warn-soft: #3a291c;
-      --bar: #8fc7b2; --track: #2a2a27; --bist: #a3adf0;
+      --bar: #8fc7b2; --track: #2a2a27; --bist: #a3adf0; --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #0ca30c; --s7: #9085e9; --s0: #6b6a64;
     }
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -90,6 +90,19 @@
   .alloc .track { height: 10px; background: var(--track); border-radius: 5px; overflow: hidden; }
   .alloc .fill { height: 100%; background: var(--bar); border-radius: 0 4px 4px 0; }
   .alloc .p { text-align: right; font-weight: 650; }
+  .pasta { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; justify-content: center; }
+  .pasta svg { width: 168px; height: 168px; flex: none; }
+  .pasta path { cursor: pointer; transition: opacity .15s; }
+  .pasta svg.sec path:not(.on) { opacity: .3; }
+  .pasta .m1 { font-size: 13px; fill: var(--muted); font-weight: 650; }
+  .pasta .m2 { font-size: 16px; fill: var(--ink); font-weight: 700; font-variant-numeric: tabular-nums; }
+  .pasta .lj { flex: 1; min-width: 130px; display: grid; gap: 6px; font-size: 13.5px; }
+  .pasta .lj div { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+  .pasta .lj i { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+  .pasta .lj b { flex: 1; }
+  .pasta .lj span { color: var(--ink2); font-variant-numeric: tabular-nums; }
+  .acil { border: 0; background: none; font: inherit; color: inherit; text-transform: inherit; letter-spacing: inherit; font-weight: inherit; padding: 6px 0; cursor: pointer; flex: 1; text-align: left; }
+  .acil::after { content: " ▸"; } .acil.on::after { content: " ▾"; }
   .hold { padding: 12px 16px; border-bottom: 1px solid var(--line); }
   .hold:last-child { border-bottom: 0; }
   .right { text-align: right; }
@@ -788,6 +801,7 @@
         html += '<div class="r"><b>' + esc(p.kod) + '</b><div class="track" title="₺' + TL.format(p.deger) + '"><div class="fill" style="width:' + Math.max(1.5, p.oran).toFixed(2) + '%"></div></div><div class="p">%' + TL.format(p.oran).replace(/,(\d)\d$/, ',$1') + '</div></div>';
       });
       html += '</div>';
+      html += pastaHtml(s.acik, s.toplam);
       html += '<div class="sec-title"><span>Pozisyonlar</span></div><div class="card num">';
       s.acik.forEach(function (p) {
         var kzY = p.maliyet ? p.kz / p.maliyet * 100 : 0;
@@ -798,7 +812,9 @@
       html += '</div>';
     }
 
-    html += '<div class="sec-title"><span>İşlemler</span><button class="btn small" data-act="islem">+ İşlem ekle</button></div>';
+    var islSay = (portfoy.islemler || []).filter(function (i) { return i.tur !== 'bedelsiz' && i.tur !== 'temettu'; }).length;
+    html += '<div class="sec-title"><button class="acil' + (islemAcik ? ' on' : '') + '" data-act="islemac">İşlemler (' + islSay + ')</button><button class="btn small" data-act="islem">+ İşlem ekle</button></div>';
+    if (islemAcik) {
     var carp = {}; s.hareketler.forEach(function (h) { if (h.id) carp[h.id] = h.carpan; });
     var isl = (portfoy.islemler || []).filter(function (i) { return i.tur !== 'bedelsiz' && i.tur !== 'temettu'; }).sort(function (a, b) { return String(b.tarih).localeCompare(String(a.tarih)) || String(b.id).localeCompare(String(a.id)); });
     if (!isl.length) html += '<div class="card"><div class="empty">Henüz işlem yok.</div></div>';
@@ -823,8 +839,56 @@
       });
       html += '</div><div class="hint">Otomatik kayıtlar her gün 10:00 ve 19:00\'da kontrol edilir. Hatalı olanı "Yok say" ile kaldırıp doğrusunu İşlem ekle → Bedelsiz/Temettü ile girebilirsin; elle girilen kayıt otomatik olanın yerine geçer.</div>';
     }
+    }
     $('s-portfoy').innerHTML = html;
-    if (aktif === 'portfoy') grafikCiz();
+    if (aktif === 'portfoy') { grafikCiz(); pastaBagla(); }
+  }
+
+  // Hisse oranları pasta grafiği: en büyük 7 hisse renkli, kalanı "Diğer"
+  var islemAcik = false;
+  function pastaHtml(acik, toplam) {
+    if (!toplam || !acik.length) return '';
+    var dil = acik.slice(0, acik.length > 8 ? 7 : 8).map(function (p, i) { return { ad: p.kod, deger: p.deger, renk: 'var(--s' + (i % 7 + 1) + ')' }; });
+    if (acik.length > 8) dil.push({ ad: 'Diğer', deger: acik.slice(7).reduce(function (a, p) { return a + p.deger; }, 0), renk: 'var(--s0)', alt: acik.length - 7 });
+    if (dil.length === 8 && !dil[7].alt) dil[7].renk = 'var(--s0)';
+    var R = 80, r = 52, c = 84, a0 = -Math.PI / 2, svg = '', bosluk = dil.length > 1 ? 0.025 : 0;
+    function nk(a, rr) { return (c + rr * Math.cos(a)).toFixed(2) + ',' + (c + rr * Math.sin(a)).toFixed(2); }
+    dil.forEach(function (d, i) {
+      var pay = d.deger / toplam, a1 = a0 + pay * 2 * Math.PI, b0 = a0 + bosluk / 2, b1 = Math.max(b0 + 0.001, a1 - bosluk / 2), buyuk = b1 - b0 > Math.PI ? 1 : 0;
+      d.oran = pay * 100;
+      if (pay >= 0.9999) svg += '<path data-i="' + i + '" fill="' + d.renk + '" fill-rule="evenodd" d="M' + (c - R) + ',' + c + 'a' + R + ',' + R + ' 0 1,0 ' + 2 * R + ',0a' + R + ',' + R + ' 0 1,0 ' + -2 * R + ',0ZM' + (c - r) + ',' + c + 'a' + r + ',' + r + ' 0 1,0 ' + 2 * r + ',0a' + r + ',' + r + ' 0 1,0 ' + -2 * r + ',0Z"/>';
+      else svg += '<path data-i="' + i + '" fill="' + d.renk + '" d="M' + nk(b0, R) + 'A' + R + ',' + R + ' 0 ' + buyuk + ',1 ' + nk(b1, R) + 'L' + nk(b1, r) + 'A' + r + ',' + r + ' 0 ' + buyuk + ',0 ' + nk(b0, r) + 'Z"><title>' + esc(d.ad) + ' %' + TL.format(d.oran) + '</title></path>';
+      a0 = a1;
+    });
+    pastaVeri = dil;
+    return '<div class="card pad pasta"><svg viewBox="0 0 168 168" role="img" aria-label="Hisse oranları pasta grafiği" id="pastaSvg">' + svg
+      + '<text class="m1" x="84" y="72" text-anchor="middle" id="pastaM1">Toplam</text><text class="m2" x="84" y="92" text-anchor="middle" id="pastaM2">₺' + TL0.format(toplam) + '</text><text class="m1" x="84" y="110" text-anchor="middle" id="pastaM3"></text></svg>'
+      + '<div class="lj num">' + dil.map(function (d, i) { return '<div data-pi="' + i + '"><i style="background:' + d.renk + '"></i><b>' + esc(d.ad) + (d.alt ? ' (' + d.alt + ')' : '') + '</b><span>%' + TL.format(d.oran).replace(/,(\d)\d$/, ',$1') + '</span></div>'; }).join('') + '</div></div>';
+  }
+  var pastaVeri = [];
+  function pastaBagla() {
+    var el = $('pastaSvg'); if (!el) return;
+    var top = pastaVeri.reduce(function (a, d) { return a + d.deger; }, 0), secili = -1;
+    function sec(i) {
+      secili = i;
+      el.classList.toggle('sec', i >= 0);
+      el.querySelectorAll('path').forEach(function (p) { p.classList.toggle('on', Number(p.getAttribute('data-i')) === i); });
+      var d = pastaVeri[i];
+      $('pastaM1').textContent = d ? d.ad : 'Toplam';
+      $('pastaM2').textContent = d ? '%' + TL.format(d.oran).replace(/,(\d)\d$/, ',$1') : '₺' + TL0.format(top);
+      $('pastaM3').textContent = d ? '₺' + TL0.format(d.deger) : '';
+    }
+    el.querySelectorAll('path').forEach(function (p) {
+      var i = Number(p.getAttribute('data-i'));
+      p.addEventListener('mouseenter', function () { sec(i); });
+      p.addEventListener('click', function (e) { e.stopPropagation(); sec(secili === i ? -1 : i); });
+    });
+    el.addEventListener('mouseleave', function () { sec(-1); });
+    document.querySelectorAll('.pasta .lj div').forEach(function (x) {
+      var i = Number(x.getAttribute('data-pi'));
+      x.addEventListener('mouseenter', function () { sec(i); }); x.addEventListener('mouseleave', function () { sec(-1); });
+      x.addEventListener('click', function () { sec(secili === i ? -1 : i); });
+    });
   }
 
   // ---- Raporlar ----
@@ -1112,7 +1176,7 @@
       aktif = t.getAttribute('data-s'); LS.set('sekme', aktif); window.scrollTo(0, 0);
       var sbar = document.getElementById('secbar'); if (sbar) sbar.remove();
       if (aktif === 'rapor') agacYukle(true);
-      ciz(); if (aktif === 'portfoy') grafikCiz(); return;
+      ciz(); if (aktif === 'portfoy') { grafikCiz(); pastaBagla(); } return;
     }
     var act = t.getAttribute('data-act'), k = t.getAttribute('data-k');
     if (act === 'kapat') sheetKapat();
@@ -1151,6 +1215,7 @@
       }).catch(function (er) { toast('Silinemedi: ' + er.message, 6000); cizRapor(); });
     }
     else if (act === 'tur') { islemTur = t.getAttribute('data-t'); islemSheet(); }
+    else if (act === 'islemac') { islemAcik = !islemAcik; cizPortfoy(); }
     else if (act === 'olaygizle') {
       if (!confirm('Bu otomatik kayıt yok sayılsın mı? Hesaplamalardan çıkarılır.')) return;
       dosyaGuncelle('portfoy.json', function (v) { v = v || { islemler: [] }; v.yoksay = v.yoksay || []; if (v.yoksay.indexOf(k) < 0) v.yoksay.push(k); return v; }, 'Yok sayıldı: ' + k)
