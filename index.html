@@ -358,9 +358,15 @@
     if (!sessiz) $('durum').textContent = 'Yükleniyor…';
     return Promise.all([
       api(depo() + '/contents/veri.json?ref=main', { accept: 'application/vnd.github.raw+json', ham: 'text', bos404: true }),
-      dosyaOku('takip.json'), dosyaOku('portfoy.json')
+      dosyaOku('takip.json'), dosyaOku('portfoy.json'),
+      api(depo() + '/contents/durum.json?ref=main', { accept: 'application/vnd.github.raw+json', ham: 'text', bos404: true })
     ]).then(function (s) {
       veri = s[0] ? JSON.parse(s[0]) : { hisseler: {}, akis: [], sonKontrol: {} };
+      var d = s[3] ? JSON.parse(s[3]) : null;
+      if (d) {
+        veri.sonKontrol = Object.assign({}, veri.sonKontrol || {}, d.sonKontrol || {});
+        if (!veri.guncelleme || d.guncelleme > veri.guncelleme) veri.guncelleme = d.guncelleme;
+      }
       takip = s[1].veri || { hisseler: [] }; takipSha = s[1].sha;
       portfoy = s[2].veri || { islemler: [] }; portfoySha = s[2].sha;
       ciz();
@@ -814,7 +820,7 @@
     sheetAc('<h2><span>Ayarlar</span><button class="btn small soft" data-act="kapat">Bitti</button></h2>'
       + '<div class="card pad" id="bildirimKart"><div class="sub">Bildirimler</div><div><b>Kontrol ediliyor…</b></div></div>'
       + '<div class="card pad"><div class="sub">Bağlı depo</div><div><b>' + esc(cfg.user + '/' + cfg.repo) + '</b></div></div>'
-      + '<div class="card pad"><div class="sub" style="white-space:normal">Otomatik kontroller: hafta içi 09:00–18:30 arası her 30 dakikada bir, her gece 00:00, hafta sonu 12:00 ve 18:00.</div></div>'
+      + '<div class="card pad"><div class="sub" style="white-space:normal">Otomatik kontroller (hafta içi): KAP bildirimleri 08:00–23:00 arası her 15 dk · fiyatlar 09:00–18:30 arası 30 dk\'da bir · ortaklık yapısı 09:00 ve 19:00 · raporlar 12:00 ve 20:00. Hafta sonu: 16:00\'da bir kez.</div></div>'
       + '<button class="btn soft" style="width:100%;margin-bottom:10px" data-act="calistir" data-k="fiyat">Sadece fiyatları güncelle</button>'
       + '<a class="btn soft" style="display:block;text-align:center;text-decoration:none;margin-bottom:10px" target="_blank" rel="noopener" href="https://github.com/' + encodeURIComponent(cfg.user) + '/' + encodeURIComponent(cfg.repo) + '/actions">Çalışma geçmişi (GitHub)</a>'
       + '<button class="btn soft" style="width:100%;margin-bottom:10px" data-act="kilitle">Şimdi kilitle</button>'
