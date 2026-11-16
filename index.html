@@ -98,6 +98,20 @@
   .chip { border: 1px solid var(--line); background: var(--card); color: var(--ink2); border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 13px; font-weight: 600; white-space: nowrap; cursor: pointer; }
   .chip.on { background: var(--accent); border-color: var(--accent); color: var(--card); }
   .links { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+  .seg.top { margin-bottom: 12px; }
+  .ktag { display: inline-block; font-weight: 700; color: var(--accent); margin-right: 4px; }
+  .otab { padding: 4px 16px 10px; }
+  .otab .r { display: grid; grid-template-columns: 1fr auto auto; gap: 4px 14px; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 14px; align-items: baseline; }
+  .otab .r:last-child { border-bottom: 0; }
+  .otab .r.h { font-size: 12px; color: var(--muted); font-weight: 600; padding-top: 4px; }
+  .otab .r .ad { min-width: 0; overflow-wrap: anywhere; }
+  .otab .r .n { text-align: right; white-space: nowrap; }
+  .otab .r .dlt { display: block; font-size: 12px; }
+  .otab .r.yeni .ad::after { content: " yeni"; font-size: 11px; font-weight: 700; color: var(--accent); }
+  .otab .r.cikti { color: var(--muted); text-decoration: line-through; }
+  .gecmis { padding: 10px 16px 14px; border-top: 1px solid var(--line); }
+  .gecmis .g { font-size: 13px; color: var(--ink2); padding: 4px 0; }
+  .gecmis .g b { color: var(--ink); }
   /* alt sayfa (sheet) */
   .sheet-bg { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 20; display: none; }
   .sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 21; background: var(--bg); border-radius: 18px 18px 0 0; max-height: 88vh; overflow: auto; padding: 8px 16px calc(env(safe-area-inset-bottom) + 20px); display: none; max-width: 720px; margin: 0 auto; }
@@ -307,7 +321,8 @@
     var nk = 0, nr = 0;
     takipKodlari().forEach(function (k) {
       var h = hisse(k);
-      (h.kap || []).forEach(function (x) { if (yeniMi('kap', k, x.bulundu) && x.bulundu !== h.eklendi && h.kapSonYeni) nk++; });
+      (h.kap || []).forEach(function (x) { if (h.kapSonYeni && x.bulundu >= h.kapSonYeni && yeniMi('kap', k, x.bulundu)) nk++; });
+      if (ortYeniMi(k, h)) nk++;
       (h.raporlar || []).concat(h.hedefler || []).forEach(function (x) { if (yeniMi('rapor', k, x.bulundu) && h.raporSonYeni && x.bulundu >= h.raporSonYeni) nr++; });
     });
     $('d-kap').hidden = !nk; $('d-kap').textContent = nk;
@@ -319,26 +334,107 @@
   }
 
   // ---- KAP ----
-  var acikKap = {};
+  var kapGorunum = LS.get('kapGorunum', 'bildirim'), kapFiltre = 'hepsi', acikOrt = {};
+  var TLimza = function (n) { return (n > 0 ? '+' : n < 0 ? '−' : '') + TL0.format(Math.abs(n)); };
+  var PUAN = new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  function puanImza(n) { return (n > 0 ? '+' : n < 0 ? '−' : '') + PUAN.format(Math.abs(n)); }
+  function ortAnahtar(o) { return JSON.stringify((o || []).map(function (x) { return [x.ad, x.tl, x.oran]; }).sort()); }
+  // En yeni kayıt ile bir önceki GÜNÜN kaydını karşılaştır
+  function ortKiyas(h) {
+    var g = (h.ortaklik && h.ortaklik.gecmis) || [];
+    return { son: g[0] || null, onceki: g[1] || null };
+  }
+  function ortSatirlar(son, onceki) {
+    var e = {}, satir = [];
+    (onceki ? onceki.ortaklar : []).forEach(function (o) { e[o.ad] = o; });
+    son.ortaklar.forEach(function (o) {
+      var a = e[o.ad]; delete e[o.ad];
+      satir.push({ ad: o.ad, oran: o.oran, tl: o.tl, dOran: a && o.oran != null && a.oran != null ? o.oran - a.oran : null, dTl: a && o.tl != null && a.tl != null ? o.tl - a.tl : null, yeni: !!onceki && !a });
+    });
+    Object.keys(e).forEach(function (ad) { satir.push({ ad: ad, oran: e[ad].oran, tl: e[ad].tl, cikti: true }); });
+    return satir;
+  }
+  function ortOzet(a, b) {
+    var e = {}, y = {}, par = [];
+    a.ortaklar.forEach(function (o) { e[o.ad] = o; }); b.ortaklar.forEach(function (o) { y[o.ad] = o; });
+    Object.keys(y).forEach(function (ad) {
+      if (!e[ad]) par.push('<b>' + esc(ad) + '</b> eklendi (%' + PUAN.format(y[ad].oran) + ')');
+      else if (e[ad].oran !== y[ad].oran || e[ad].tl !== y[ad].tl) par.push('<b>' + esc(ad) + '</b> %' + PUAN.format(e[ad].oran) + ' → %' + PUAN.format(y[ad].oran));
+    });
+    Object.keys(e).forEach(function (ad) { if (!y[ad]) par.push('<b>' + esc(ad) + '</b> listeden çıktı'); });
+    return par.join(' · ');
+  }
+  function ortYeniMi(k, h) { return !!(h.ortaklik && h.ortaklik.sonDegisim) && yeniMi('ort', k, h.ortaklik.sonDegisim); }
+
   function cizKap() {
     var kodlar = takipKodlari(), html = '';
+    html += '<div class="seg top"><button data-act="kapgor" data-k="bildirim" class="' + (kapGorunum === 'bildirim' ? 'on' : '') + '">Bildirimler</button>'
+      + '<button data-act="kapgor" data-k="ortaklik" class="' + (kapGorunum === 'ortaklik' ? 'on' : '') + '">Ortaklık yapısı</button></div>';
     if (veri.hatalar && veri.hatalar.kap) html += '<div class="card"><div class="errbox">KAP okunamadı: ' + esc(veri.hatalar.kap) + '</div></div>';
     if (!kodlar.length) { $('s-kap').innerHTML = html + bosTakip(); return; }
-    kodlar.forEach(function (k) {
-      var h = hisse(k), liste = h.kap || [];
-      var yeniSay = h.kapSonYeni ? liste.filter(function (x) { return yeniMi('kap', k, x.bulundu) && x.bulundu >= h.kapSonYeni; }).length : 0;
-      var pill = h.hatalar && h.hatalar.kap ? '<span class="pill err">Hata</span>'
-        : !h.kapHazir ? '<span class="pill same">Bekleniyor</span>'
-        : yeniSay ? '<span class="pill new">' + yeniSay + ' yeni</span>' : '<span class="pill same">Değişiklik yok</span>';
-      html += '<div class="card' + (acikKap[k] ? ' open' : '') + '" data-kap="' + esc(k) + '"><button class="tap pad" data-act="kapac" data-k="' + esc(k) + '"><div class="row">'
-        + '<div class="grow"><div class="kod">' + esc(k) + '</div><div class="sub">' + esc(h.unvan || h.ad || '') + (liste[0] ? ' · son bildirim ' + gun(liste[0].t) : '') + '</div></div>'
-        + pill + '<span class="chev">›</span></div></button><div class="body">';
-      if (h.hatalar && h.hatalar.kap) html += '<div class="errbox">' + esc(h.hatalar.kap) + '</div>';
-      if (!liste.length) html += '<div class="empty">Son 30 günde bildirim yok.</div>';
-      liste.forEach(function (x) {
-        var y = h.kapSonYeni && yeniMi('kap', k, x.bulundu) && x.bulundu >= h.kapSonYeni;
-        html += '<a class="item' + (y ? ' isnew' : '') + '" href="' + esc(x.link) + '" target="_blank" rel="noopener"><div class="t">' + zaman(x.t) + '</div><div class="h">' + esc(x.konu) + '</div>' + (x.ozet ? '<div class="d">' + esc(x.ozet) + '</div>' : '') + '</a>';
+    if (kapFiltre !== 'hepsi' && kodlar.indexOf(kapFiltre) < 0) kapFiltre = 'hepsi';
+
+    if (kapGorunum === 'bildirim') {
+      html += '<div class="chips"><button class="chip' + (kapFiltre === 'hepsi' ? ' on' : '') + '" data-act="kfiltre" data-k="hepsi">Tümü</button>';
+      kodlar.forEach(function (k) { html += '<button class="chip' + (kapFiltre === k ? ' on' : '') + '" data-act="kfiltre" data-k="' + esc(k) + '">' + esc(k) + '</button>'; });
+      html += '</div>';
+      var secili = kapFiltre === 'hepsi' ? kodlar : [kapFiltre], tum = [], hatali = [];
+      secili.forEach(function (k) {
+        var h = hisse(k);
+        if (h.hatalar && h.hatalar.kap) hatali.push(k + ': ' + h.hatalar.kap);
+        (h.kap || []).forEach(function (x) { tum.push({ k: k, x: x, y: !!h.kapSonYeni && x.bulundu >= h.kapSonYeni && yeniMi('kap', k, x.bulundu) }); });
       });
+      if (hatali.length) html += '<div class="card"><div class="errbox">' + hatali.map(esc).join('<br>') + '</div></div>';
+      tum.sort(function (a, b) { return String(b.x.t || '').localeCompare(String(a.x.t || '')); });
+      if (!tum.length) html += '<div class="card"><div class="empty">' + (veri.sonKontrol && veri.sonKontrol.kap ? 'Son 30 günde bildirim yok.' : 'İlk kontrol bekleniyor. Yenile düğmesine basabilirsin.') + '</div></div>';
+      else {
+        html += '<div class="card">';
+        tum.slice(0, 200).forEach(function (o) {
+          html += '<a class="item' + (o.y ? ' isnew' : '') + '" href="' + esc(o.x.link) + '" target="_blank" rel="noopener"><div class="t"><span class="ktag">' + esc(o.k) + '</span>' + zaman(o.x.t) + '</div><div class="h">' + esc(o.x.konu) + '</div>' + (o.x.ozet ? '<div class="d">' + esc(o.x.ozet) + '</div>' : '') + '</a>';
+        });
+        html += '</div>';
+      }
+      $('s-kap').innerHTML = html;
+      if (aktif === 'kap') secili.forEach(function (k) { gorulduYap('kap', k); });
+      return;
+    }
+
+    // Ortaklık yapısı
+    html += '<p class="hint" style="margin:-2px 4px 10px">%5 ve üzeri paya sahip ortaklar. Her gün kontrol edilir ve bir önceki günle karşılaştırılır.</p>';
+    kodlar.forEach(function (k) {
+      var h = hisse(k), c = ortKiyas(h), son = c.son, onceki = c.onceki;
+      var degisti = son && onceki && ortAnahtar(son.ortaklar) !== ortAnahtar(onceki.ortaklar);
+      var pill = h.hatalar && h.hatalar.ortaklik && !son ? '<span class="pill err">Hata</span>'
+        : !son ? '<span class="pill same">Bekleniyor</span>'
+        : !onceki ? '<span class="pill same">İlk kayıt</span>'
+        : degisti ? '<span class="pill new">Değişti</span>' : '<span class="pill same">Değişiklik yok</span>';
+      var alt = !son ? esc(h.unvan || '') : onceki ? gun(son.tarih) + ' ile ' + gun(onceki.tarih) + ' karşılaştırması' : gun(son.tarih) + ' · yarından itibaren karşılaştırılacak';
+      html += '<div class="card' + (acikOrt[k] ? ' open' : '') + '" data-ort="' + esc(k) + '"><button class="tap pad" data-act="ortac" data-k="' + esc(k) + '"><div class="row">'
+        + '<div class="grow"><div class="kod">' + esc(k) + (ortYeniMi(k, h) ? ' <span class="pill new" style="font-size:11px">yeni</span>' : '') + '</div><div class="sub">' + alt + '</div></div>'
+        + pill + '<span class="chev">›</span></div></button><div class="body">';
+      if (h.hatalar && h.hatalar.ortaklik) html += '<div class="errbox">' + esc(h.hatalar.ortaklik) + '</div>';
+      if (son) {
+        html += '<div class="otab num"><div class="r h"><span>Ortak</span><span class="n">Pay %</span><span class="n">Sermaye payı (TL)</span></div>';
+        ortSatirlar(son, onceki).forEach(function (r) {
+          var dO = r.dOran ? '<span class="dlt ' + (r.dOran > 0 ? 'up' : 'down') + '">' + puanImza(r.dOran) + ' puan</span>' : '';
+          var dT = r.dTl ? '<span class="dlt ' + (r.dTl > 0 ? 'up' : 'down') + '">' + TLimza(r.dTl) + '</span>' : '';
+          html += '<div class="r' + (r.yeni ? ' yeni' : '') + (r.cikti ? ' cikti' : '') + '"><span class="ad">' + esc(r.ad) + '</span>'
+            + '<span class="n">%' + (r.oran == null ? '—' : PUAN.format(r.oran)) + dO + '</span>'
+            + '<span class="n">' + (r.tl == null ? '—' : TL0.format(r.tl)) + dT + '</span></div>';
+        });
+        html += '</div>';
+        var f = son.fiili, fo = onceki && onceki.fiili;
+        html += '<div class="kv num" style="padding:0 16px 14px;margin-top:4px">'
+          + '<div><div class="k">Ödenmiş sermaye</div><div class="v">' + (son.sermaye != null ? '₺' + TL0.format(son.sermaye) : '—') + '</div></div>'
+          + '<div><div class="k">Fiili dolaşım oranı</div><div class="v">' + (f && f.oran != null ? '%' + PUAN.format(f.oran) + (fo && fo.oran != null && fo.oran !== f.oran ? ' ' + isaret(f.oran - fo.oran, puanImza(f.oran - fo.oran).replace(/^[+−]/, '') + ' puan') : '') : '—') + '</div></div></div>';
+        // Geçmişteki değişiklik günleri
+        var g = h.ortaklik.gecmis, olaylar = [];
+        for (var i = 0; i < g.length - 1 && olaylar.length < 15; i++) {
+          if (ortAnahtar(g[i].ortaklar) !== ortAnahtar(g[i + 1].ortaklar)) olaylar.push('<div class="g">' + gun(g[i].tarih) + ': ' + ortOzet(g[i + 1], g[i]) + '</div>');
+        }
+        html += '<div class="gecmis"><div class="sub" style="margin-bottom:4px">Geçmiş değişiklikler</div>' + (olaylar.length ? olaylar.join('') : '<div class="g">Kayıt başladığından beri değişiklik olmadı.</div>')
+          + '<div class="links"><a class="btn small soft" href="https://www.kap.org.tr/tr/sirket-bilgileri/genel/' + esc(h.kapOid || '') + '" target="_blank" rel="noopener">KAP\'ta aç</a></div></div>';
+      } else if (!(h.hatalar && h.hatalar.ortaklik)) html += '<div class="empty">Bir sonraki KAP kontrolünde gelecek.</div>';
       html += '</div></div>';
     });
     $('s-kap').innerHTML = html;
@@ -478,7 +574,7 @@
   function takipSheet() {
     var kodlar = takipKodlari(), html = '<h2><span>Takip listesi</span><button class="btn small soft" data-act="kapat">Bitti</button></h2>'
       + '<div class="row"><input class="f grow" id="yeniKod" placeholder="Hisse kodu (ör. THYAO)" autocapitalize="characters" autocorrect="off" spellcheck="false" maxlength="8"><button class="btn" data-act="takipekle">Ekle</button></div>'
-      + '<div class="hint">KAP bildirimleri ve hedeffiyat.com.tr raporları bu listedeki hisseler için takip edilir.</div><div class="card" style="margin-top:14px">';
+      + '<div class="hint">KAP bildirimleri, ortaklık yapısı ve hedeffiyat.com.tr raporları bu listedeki hisseler için takip edilir.</div><div class="card" style="margin-top:14px">';
     if (!kodlar.length) html += '<div class="empty">Liste boş.</div>';
     kodlar.forEach(function (k) {
       var h = hisse(k);
@@ -553,10 +649,12 @@
     if (act === 'kapat') sheetKapat();
     else if (act === 'takip') takipSheet();
     else if (act === 'islem') { islemTur = 'alis'; islemSheet(); }
-    else if (act === 'kapac') {
-      acikKap[k] = !acikKap[k];
-      var c = document.querySelector('[data-kap="' + k + '"]'); if (c) c.classList.toggle('open', acikKap[k]);
-      if (acikKap[k]) setTimeout(function () { gorulduYap('kap', k); rozetler(); }, 1500);
+    else if (act === 'kapgor') { kapGorunum = k; LS.set('kapGorunum', k); cizKap(); rozetler(); }
+    else if (act === 'kfiltre') { kapFiltre = k; cizKap(); rozetler(); }
+    else if (act === 'ortac') {
+      acikOrt[k] = !acikOrt[k];
+      var c = document.querySelector('[data-ort="' + k + '"]'); if (c) c.classList.toggle('open', acikOrt[k]);
+      if (acikOrt[k]) { gorulduYap('ort', k); setTimeout(function () { cizKap(); rozetler(); }, 1200); }
     }
     else if (act === 'rfiltre') { raporFiltre = k; cizRapor(); rozetler(); }
     else if (act === 'tur') { islemTur = t.getAttribute('data-t'); document.querySelectorAll('.seg button').forEach(function (b) { b.classList.toggle('on', b === t); }); }
