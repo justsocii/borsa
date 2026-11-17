@@ -7,8 +7,8 @@ self.addEventListener('push', function (e) {
   try { d = e.data ? e.data.json() : {}; } catch (x) { d = { title: 'App', body: e.data ? e.data.text() : '' }; }
   e.waitUntil(self.registration.showNotification(d.title || 'App', {
     body: d.body || '',
-    icon: 'icon-192.png',
-    badge: 'icon-192.png',
+    icon: 'yy-192.png',
+    badge: 'yy-192.png',
     data: { url: d.url || './' }
   }));
 });
