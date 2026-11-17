@@ -567,6 +567,9 @@
     var parca = [TL0.format(g.toplam) + ' pay' + (g.oran != null ? ' · sermayenin %' + ORAN3.format(g.oran) + '\'i' : '')];
     if (g.son) parca.push('son alım ' + gun(g.son.tarih) + ': ' + TL0.format(g.son.adet) + ' pay' + (g.son.fiyat != null ? ' @ ' + g.son.fiyat.toLocaleString('tr-TR') + ' TL' : ''));
     if (g.program && g.program.azami) parca.push('program azami ' + TL0.format(g.program.azami) + (g.program.bit ? ', bitiş ' + gun(g.program.bit) : ''));
+    var dus = (g.olaylar || []).filter(function (o) { return o.tur !== 'alim' && o.fark < 0; })[0];
+    if (dus) parca.push((dus.tur === 'itfa' ? 'itfa ' : 'satış ') + gun(dus.t) + ': ' + TL0.format(Math.abs(dus.fark)) + ' pay düşüldü');
+    if (g.uyari) parca.push('<span style="color:var(--warn)">' + esc(g.uyari) + '</span>');
     return '<a class="geri-alim" href="' + esc(g.link || '#') + '" target="_blank" rel="noopener"><b>Geri alınan paylar:</b> ' + parca.join(' · ') + '</a>';
   }
   // En yeni kayıt ile bir önceki GÜNÜN kaydını karşılaştır
