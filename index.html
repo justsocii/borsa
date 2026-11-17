@@ -205,8 +205,8 @@
   .setup { max-width: 460px; margin: 0 auto; padding: calc(env(safe-area-inset-top) + 30px) 20px 40px; }
   .setup h1 { font-size: 28px; margin: 0 0 6px; }
   .setup p { color: var(--ink2); }
-  /* Şifre ekranı: dikey ortanın biraz altında, başparmakla kolay erişim */
-  #kilit:not([hidden]) { min-height: 100vh; min-height: 100svh; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; padding-top: calc(env(safe-area-inset-top) + 18vh); padding-bottom: calc(env(safe-area-inset-bottom) + 24px); }
+  /* Şifre ekranı: üstten biraz aşağıda; klavye açıkken de düğme görünür kalır */
+  #kilit:not([hidden]) { box-sizing: border-box; padding-top: calc(env(safe-area-inset-top) + 14vh); }
 </style>
 </head>
 <body>
