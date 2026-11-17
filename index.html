@@ -205,6 +205,8 @@
   .setup { max-width: 460px; margin: 0 auto; padding: calc(env(safe-area-inset-top) + 30px) 20px 40px; }
   .setup h1 { font-size: 28px; margin: 0 0 6px; }
   .setup p { color: var(--ink2); }
+  /* Şifre ekranı: dikey ortanın biraz altında, başparmakla kolay erişim */
+  #kilit:not([hidden]) { min-height: 100vh; min-height: 100svh; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; padding-top: calc(env(safe-area-inset-top) + 18vh); padding-bottom: calc(env(safe-area-inset-bottom) + 24px); }
 </style>
 </head>
 <body>
@@ -553,8 +555,15 @@
   function ortAnahtar(o) { return JSON.stringify((o || []).map(ortYuv).sort()); }
   // Pay geri alımı özeti (toplam geri alınan pay ve sermayeye oranı)
   var ORAN3 = new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 3 });
+  // Şirketin kendi payları ortaklık tablosunda ayrı satır olarak görünüyorsa (geri alımlar eşiği geçti) ek nota gerek yok
+  function harfler(s) { return String(s || '').toLocaleUpperCase('tr').replace(/[^A-ZÇĞİÖŞÜ0-9]/g, ''); }
+  function kendiPayiTabloda(h) {
+    var son = h.ortaklik && h.ortaklik.gecmis && h.ortaklik.gecmis[0]; if (!son) return false;
+    var u = harfler(h.unvan); if (u.length < 8) return false;
+    return son.ortaklar.some(function (o) { var a = harfler(o.ad); return /GERİALIN|KENDİPAY|ŞİRKETİNKENDİSİ/.test(a) || (a.length >= 10 && a.slice(0, 12) === u.slice(0, Math.min(12, a.length))); });
+  }
   function geriAlimHtml(h) {
-    var g = h.geriAlim; if (!g || g.toplam == null) return '';
+    var g = h.geriAlim; if (!g || g.toplam == null || kendiPayiTabloda(h)) return '';
     var parca = [TL0.format(g.toplam) + ' pay' + (g.oran != null ? ' · sermayenin %' + ORAN3.format(g.oran) + '\'i' : '')];
     if (g.son) parca.push('son alım ' + gun(g.son.tarih) + ': ' + TL0.format(g.son.adet) + ' pay' + (g.son.fiyat != null ? ' @ ' + g.son.fiyat.toLocaleString('tr-TR') + ' TL' : ''));
     if (g.program && g.program.azami) parca.push('program azami ' + TL0.format(g.program.azami) + (g.program.bit ? ', bitiş ' + gun(g.program.bit) : ''));
@@ -631,7 +640,7 @@
         : !onceki ? '<span class="pill same">İlk kayıt</span>'
         : degisti ? '<span class="pill new">Değişti</span>' : '<span class="pill same">Değişiklik yok</span>';
       var alt = !son ? esc(h.unvan || '') : onceki ? gun(son.tarih) + ' ile ' + gun(onceki.tarih) + ' karşılaştırması' : gun(son.tarih) + ' · yarından itibaren karşılaştırılacak';
-      if (h.geriAlim && h.geriAlim.oran != null) alt += ' · <span style="color:var(--accent)">geri alım %' + ORAN3.format(h.geriAlim.oran) + '</span>';
+      if (h.geriAlim && h.geriAlim.oran != null && !kendiPayiTabloda(h)) alt += ' · <span style="color:var(--accent)">geri alım %' + ORAN3.format(h.geriAlim.oran) + '</span>';
       html += '<div class="card' + (acikOrt[k] ? ' open' : '') + '" data-ort="' + esc(k) + '"><button class="tap pad" data-act="ortac" data-k="' + esc(k) + '"><div class="row">'
         + '<div class="grow"><div class="kod">' + esc(k) + (ortYeniMi(k, h) ? ' <span class="pill new" style="font-size:11px">yeni</span>' : '') + '</div><div class="sub">' + alt + '</div></div>'
         + pill + '<span class="chev">›</span></div></button><div class="body">';
