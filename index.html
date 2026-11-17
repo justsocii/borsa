@@ -577,13 +577,32 @@
     var g = (h.ortaklik && h.ortaklik.gecmis) || [];
     return { son: g[0] || null, onceki: g[1] || null };
   }
+  // Geri alınan paylar "Diğer" içinden ayrılıp "KOD Geri Alım" satırı olarak gösterilir
+  // (şirketin kendi payı KAP tablosunda zaten ayrı satırsa dokunulmaz)
+  function ortGosterim(h, kayit) {
+    var g = h.geriAlim;
+    if (!kayit || !g || !(g.toplam > 0) || kendiPayiTabloda(h)) return kayit;
+    var sermaye = kayit.sermaye || g.sermaye, oran = g.oran != null ? g.oran : (sermaye ? g.toplam / sermaye * 100 : null);
+    var liste = kayit.ortaklar.map(function (o) { return { ad: o.ad, tl: o.tl, oran: o.oran, oy: o.oy }; });
+    var di = -1; liste.forEach(function (o, i) { if (/^D[İI]ĞER/i.test(String(o.ad).trim())) di = i; });
+    if (di >= 0) {
+      var d = liste[di];
+      if (d.tl != null) d.tl = Math.max(0, d.tl - g.toplam);
+      if (d.oran != null && oran != null) d.oran = Math.max(0, d.oran - oran);
+    }
+    var satir = { ad: h.kod + ' Geri Alım', tl: g.toplam, oran: oran, ga: true };
+    if (di >= 0) liste.splice(di, 0, satir); else liste.push(satir);
+    var kopya = {}; for (var k in kayit) kopya[k] = kayit[k];
+    kopya.ortaklar = liste;
+    return kopya;
+  }
   function ortSatirlar(son, onceki) {
     var e = {}, satir = [];
     (onceki ? onceki.ortaklar : []).forEach(function (o) { e[o.ad] = o; });
     son.ortaklar.forEach(function (o) {
       var a = e[o.ad]; delete e[o.ad];
       var dO = a && o.oran != null && a.oran != null ? o.oran - a.oran : null, dT = a && o.tl != null && a.tl != null ? o.tl - a.tl : null;
-      satir.push({ ad: o.ad, oran: o.oran, tl: o.tl, dOran: dO != null && Math.abs(dO) >= 0.005 ? dO : null, dTl: dT != null && Math.abs(dT) >= 1 ? dT : null, yeni: !!onceki && !a });
+      satir.push({ ad: o.ad, ga: o.ga, oran: o.oran, tl: o.tl, dOran: dO != null && Math.abs(dO) >= 0.005 ? dO : null, dTl: dT != null && Math.abs(dT) >= 1 ? dT : null, yeni: !!onceki && !a });
     });
     Object.keys(e).forEach(function (ad) { satir.push({ ad: ad, oran: e[ad].oran, tl: e[ad].tl, cikti: true }); });
     return satir;
@@ -643,18 +662,17 @@
         : !onceki ? '<span class="pill same">İlk kayıt</span>'
         : degisti ? '<span class="pill new">Değişti</span>' : '<span class="pill same">Değişiklik yok</span>';
       var alt = !son ? esc(h.unvan || '') : onceki ? gun(son.tarih) + ' ile ' + gun(onceki.tarih) + ' karşılaştırması' : gun(son.tarih) + ' · yarından itibaren karşılaştırılacak';
-      if (h.geriAlim && h.geriAlim.oran != null && !kendiPayiTabloda(h)) alt += ' · <span style="color:var(--accent)">geri alım %' + ORAN3.format(h.geriAlim.oran) + '</span>';
       html += '<div class="card' + (acikOrt[k] ? ' open' : '') + '" data-ort="' + esc(k) + '"><button class="tap pad" data-act="ortac" data-k="' + esc(k) + '"><div class="row">'
         + '<div class="grow"><div class="kod">' + esc(k) + (ortYeniMi(k, h) ? ' <span class="pill new" style="font-size:11px">yeni</span>' : '') + '</div><div class="sub">' + alt + '</div></div>'
         + pill + '<span class="chev">›</span></div></button><div class="body">';
       if (h.hatalar && h.hatalar.ortaklik) html += '<div class="errbox">' + esc(h.hatalar.ortaklik) + '</div>';
       if (son) {
         html += '<div class="otab num"><div class="r h"><span>Ortak</span><span class="n">Pay %</span><span class="n">Sermaye payı (TL)</span></div>';
-        ortSatirlar(son, onceki).forEach(function (r) {
+        ortSatirlar(ortGosterim(h, son), onceki && ortGosterim(h, onceki)).forEach(function (r) {
           var dO = r.dOran ? '<span class="dlt ' + (r.dOran > 0 ? 'up' : 'down') + '">' + puanImza(r.dOran) + ' puan</span>' : '';
           var dT = r.dTl ? '<span class="dlt ' + (r.dTl > 0 ? 'up' : 'down') + '">' + TLimza(r.dTl) + '</span>' : '';
           html += '<div class="r' + (r.yeni ? ' yeni' : '') + (r.cikti ? ' cikti' : '') + '"><span class="ad">' + esc(r.ad) + '</span>'
-            + '<span class="n">%' + (r.oran == null ? '—' : PUAN.format(r.oran)) + dO + '</span>'
+            + '<span class="n">%' + (r.oran == null ? '—' : (r.ga ? ORAN3 : PUAN).format(r.oran)) + dO + '</span>'
             + '<span class="n">' + (r.tl == null ? '—' : TL0.format(r.tl)) + dT + '</span></div>';
         });
         html += '</div>';
@@ -662,7 +680,7 @@
         html += '<div class="kv num" style="padding:0 16px 14px;margin-top:4px">'
           + '<div><div class="k">Ödenmiş sermaye</div><div class="v">' + (son.sermaye != null ? '₺' + TL0.format(son.sermaye) : '—') + '</div></div>'
           + '<div><div class="k">Fiili dolaşım oranı</div><div class="v">' + (f && f.oran != null ? '%' + PUAN.format(f.oran) + (fo && fo.oran != null && fo.oran !== f.oran ? ' ' + isaret(f.oran - fo.oran, puanImza(f.oran - fo.oran).replace(/^[+−]/, '') + ' puan') : '') : '—') + '</div></div></div>';
-        html += geriAlimHtml(h);
+        if (h.geriAlim && h.geriAlim.uyari && !kendiPayiTabloda(h)) html += '<div class="geri-alim"><span style="color:var(--warn)">' + esc(h.geriAlim.uyari) + '</span></div>';
         // Geçmişteki değişiklik günleri
         var g = h.ortaklik.gecmis, olaylar = [];
         for (var i = 0; i < g.length - 1 && olaylar.length < 15; i++) {
