@@ -471,17 +471,19 @@
       var h = (veri.hisseler || {})[k] || {}, s = h.sunum;
       if (!s) gruplar.tablo.push({ k: k });
       else if (s.sunum) gruplar['var'].push({ k: k, s: s });
+      else if (SUNUM_ATLA.indexOf(k) >= 0) gruplar['var'].push({ k: k, s: s, atla: true });
       else if (simdi <= Date.parse(s.bitis)) gruplar.bek.push({ k: k, s: s, kalan: Math.max(0, Math.ceil((Date.parse(s.bitis) - simdi) / 864e5)) });
       else gruplar.yok.push({ k: k, s: s });
     });
     gruplar.bek.sort(function (a, b) { return a.kalan - b.kalan; });
-    gruplar['var'].sort(function (a, b) { return String(b.s.sunum.t).localeCompare(String(a.s.sunum.t)); });
+    gruplar['var'].sort(function (a, b) { return ((a.atla ? 1 : 0) - (b.atla ? 1 : 0)) || (a.atla ? a.k.localeCompare(b.k) : String(b.s.sunum.t).localeCompare(String(a.s.sunum.t))); });
     var html = '<div class="hint" style="margin:0 2px 12px">Şirket çeyrek mali tablolarını açıkladıktan sonra 30 gün boyunca KAP ve şirketin yatırımcı ilişkileri sayfası kontrol edilir. Sunum bulununca indirilir ve bildirim gelir.</div>';
     var bolum = function (baslik, liste, satir) {
       if (!liste.length) return '';
       return '<div class="sec-title"><span>' + baslik + ' (' + liste.length + ')</span></div><div class="card">' + liste.map(satir).join('') + '</div>';
     };
     html += bolum('Yayınlandı', gruplar['var'], function (x) {
+      if (x.atla) return '<div class="hold"><div class="row"><div class="grow"><b>' + esc(x.k) + '</b><div class="sub">Mali tablo ' + kisa(x.s.frT) + ' · yatırımcı sunumu takip edilmiyor</div></div><span class="etiket">Atlandı</span></div></div>';
       var gun = Math.round((Date.parse(x.s.sunum.t) - Date.parse(x.s.frT)) / 864e5);
       return '<a class="hold sunum" href="' + esc(x.s.sunum.link) + '" target="_blank" rel="noopener"><div class="row"><div class="grow"><b>' + esc(x.k) + '</b><div class="sub" style="white-space:normal">' + esc(x.s.sunum.baslik) + '</div>'
         + '<div class="sub">Mali tablo ' + kisa(x.s.frT) + ' · sunum ' + kisa(x.s.sunum.t) + (gun > 0 ? ' (' + gun + ' gün sonra)' : ' (aynı gün)') + '</div></div><span class="etiket ok">Yayınlandı ↗</span></div></a>';
@@ -517,6 +519,8 @@
     $('s-sunum').innerHTML = html;
   }
   var sunumAgac = null;
+  // Yatırımcı sunumu yayınlamayan / bilgi paylaşmayan şirketler: beklenmez, "Atlandı" olarak gösterilir
+  var SUNUM_ATLA = ['CLEBI', 'ANHYT', 'EGGUB', 'SAFKR', 'TBORG', 'NETCD'];
 
   function takipKodlari() { return (takip.hisseler || []).map(function (k) { return String(k).toUpperCase(); }); }
   function hisse(k) { return (veri.hisseler || {})[k] || { kod: k, kap: [], raporlar: [], hedefler: [], hatalar: {} }; }
