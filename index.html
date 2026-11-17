@@ -83,6 +83,8 @@
   .kv { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 16px; margin-top: 12px; }
   .kv .k { font-size: 12px; color: var(--muted); }
   .kv .v { font-weight: 650; }
+  .geri-alim { display: block; margin: 0 16px 14px; padding: 8px 10px; border-radius: 10px; background: var(--accent-soft); color: var(--ink2); font-size: 12.5px; line-height: 1.45; text-decoration: none; }
+  .geri-alim b { color: var(--ink); font-weight: 650; }
   .sec-title { font-size: 13px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin: 20px 4px 8px; display: flex; align-items: center; }
   .sec-title span { flex: 1; }
   .alloc { padding: 6px 16px 12px; }
@@ -546,7 +548,18 @@
   var TLimza = function (n) { return (n > 0 ? '+' : n < 0 ? '−' : '') + TL0.format(Math.abs(n)); };
   var PUAN = new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   function puanImza(n) { return (n > 0 ? '+' : n < 0 ? '−' : '') + PUAN.format(Math.abs(n)); }
-  function ortAnahtar(o) { return JSON.stringify((o || []).map(function (x) { return [x.ad, x.tl, x.oran]; }).sort()); }
+  // KAP tutarları kuruş yuvarlamasıyla oynayabiliyor: TL tam sayıya, oran 2 haneye yuvarlanarak karşılaştırılır
+  function ortYuv(x) { return [x.ad, x.tl == null ? null : Math.round(x.tl), x.oran == null ? null : Math.round(x.oran * 100) / 100]; }
+  function ortAnahtar(o) { return JSON.stringify((o || []).map(ortYuv).sort()); }
+  // Pay geri alımı özeti (toplam geri alınan pay ve sermayeye oranı)
+  var ORAN3 = new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 3 });
+  function geriAlimHtml(h) {
+    var g = h.geriAlim; if (!g || g.toplam == null) return '';
+    var parca = [TL0.format(g.toplam) + ' pay' + (g.oran != null ? ' · sermayenin %' + ORAN3.format(g.oran) + '\'i' : '')];
+    if (g.son) parca.push('son alım ' + gun(g.son.tarih) + ': ' + TL0.format(g.son.adet) + ' pay' + (g.son.fiyat != null ? ' @ ' + g.son.fiyat.toLocaleString('tr-TR') + ' TL' : ''));
+    if (g.program && g.program.azami) parca.push('program azami ' + TL0.format(g.program.azami) + (g.program.bit ? ', bitiş ' + gun(g.program.bit) : ''));
+    return '<a class="geri-alim" href="' + esc(g.link || '#') + '" target="_blank" rel="noopener"><b>Geri alınan paylar:</b> ' + parca.join(' · ') + '</a>';
+  }
   // En yeni kayıt ile bir önceki GÜNÜN kaydını karşılaştır
   function ortKiyas(h) {
     var g = (h.ortaklik && h.ortaklik.gecmis) || [];
@@ -557,7 +570,8 @@
     (onceki ? onceki.ortaklar : []).forEach(function (o) { e[o.ad] = o; });
     son.ortaklar.forEach(function (o) {
       var a = e[o.ad]; delete e[o.ad];
-      satir.push({ ad: o.ad, oran: o.oran, tl: o.tl, dOran: a && o.oran != null && a.oran != null ? o.oran - a.oran : null, dTl: a && o.tl != null && a.tl != null ? o.tl - a.tl : null, yeni: !!onceki && !a });
+      var dO = a && o.oran != null && a.oran != null ? o.oran - a.oran : null, dT = a && o.tl != null && a.tl != null ? o.tl - a.tl : null;
+      satir.push({ ad: o.ad, oran: o.oran, tl: o.tl, dOran: dO != null && Math.abs(dO) >= 0.005 ? dO : null, dTl: dT != null && Math.abs(dT) >= 1 ? dT : null, yeni: !!onceki && !a });
     });
     Object.keys(e).forEach(function (ad) { satir.push({ ad: ad, oran: e[ad].oran, tl: e[ad].tl, cikti: true }); });
     return satir;
@@ -567,7 +581,7 @@
     a.ortaklar.forEach(function (o) { e[o.ad] = o; }); b.ortaklar.forEach(function (o) { y[o.ad] = o; });
     Object.keys(y).forEach(function (ad) {
       if (!e[ad]) par.push('<b>' + esc(ad) + '</b> eklendi (%' + PUAN.format(y[ad].oran) + ')');
-      else if (e[ad].oran !== y[ad].oran || e[ad].tl !== y[ad].tl) par.push('<b>' + esc(ad) + '</b> %' + PUAN.format(e[ad].oran) + ' → %' + PUAN.format(y[ad].oran));
+      else if (JSON.stringify(ortYuv(e[ad])) !== JSON.stringify(ortYuv(y[ad]))) par.push('<b>' + esc(ad) + '</b> %' + PUAN.format(e[ad].oran) + ' → %' + PUAN.format(y[ad].oran));
     });
     Object.keys(e).forEach(function (ad) { if (!y[ad]) par.push('<b>' + esc(ad) + '</b> listeden çıktı'); });
     return par.join(' · ');
@@ -617,6 +631,7 @@
         : !onceki ? '<span class="pill same">İlk kayıt</span>'
         : degisti ? '<span class="pill new">Değişti</span>' : '<span class="pill same">Değişiklik yok</span>';
       var alt = !son ? esc(h.unvan || '') : onceki ? gun(son.tarih) + ' ile ' + gun(onceki.tarih) + ' karşılaştırması' : gun(son.tarih) + ' · yarından itibaren karşılaştırılacak';
+      if (h.geriAlim && h.geriAlim.oran != null) alt += ' · <span style="color:var(--accent)">geri alım %' + ORAN3.format(h.geriAlim.oran) + '</span>';
       html += '<div class="card' + (acikOrt[k] ? ' open' : '') + '" data-ort="' + esc(k) + '"><button class="tap pad" data-act="ortac" data-k="' + esc(k) + '"><div class="row">'
         + '<div class="grow"><div class="kod">' + esc(k) + (ortYeniMi(k, h) ? ' <span class="pill new" style="font-size:11px">yeni</span>' : '') + '</div><div class="sub">' + alt + '</div></div>'
         + pill + '<span class="chev">›</span></div></button><div class="body">';
@@ -635,6 +650,7 @@
         html += '<div class="kv num" style="padding:0 16px 14px;margin-top:4px">'
           + '<div><div class="k">Ödenmiş sermaye</div><div class="v">' + (son.sermaye != null ? '₺' + TL0.format(son.sermaye) : '—') + '</div></div>'
           + '<div><div class="k">Fiili dolaşım oranı</div><div class="v">' + (f && f.oran != null ? '%' + PUAN.format(f.oran) + (fo && fo.oran != null && fo.oran !== f.oran ? ' ' + isaret(f.oran - fo.oran, puanImza(f.oran - fo.oran).replace(/^[+−]/, '') + ' puan') : '') : '—') + '</div></div></div>';
+        html += geriAlimHtml(h);
         // Geçmişteki değişiklik günleri
         var g = h.ortaklik.gecmis, olaylar = [];
         for (var i = 0; i < g.length - 1 && olaylar.length < 15; i++) {
